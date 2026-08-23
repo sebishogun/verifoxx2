@@ -92,7 +92,7 @@
     {
       "request_id": "R5",
       "decision": "Escalate",
-      "rationale": "The pre-execution approval record is conflicting, so the request cannot be decided automatically.",
+      "rationale": "The pre-execution approval record is invalid, stale, or conflicting, so the request cannot be decided automatically.",
       "requirements_applied": [
         "R1",
         "R2"
@@ -103,13 +103,13 @@
         "E4"
       ],
       "missing_or_conflicting_evidence": [
-        "E4 approval_record has conflicting approval state."
+        "E4 approval_record has invalid, stale, or conflicting approval state."
       ],
       "assumptions": [
         "The supplied structured fields faithfully represent the underlying request and evidence records."
       ],
       "unresolved_uncertainty": [
-        "The valid pre-execution approval state cannot be established from conflicting evidence."
+        "The valid pre-execution approval state cannot be established from conflicting or stale evidence."
       ]
     }
   ]

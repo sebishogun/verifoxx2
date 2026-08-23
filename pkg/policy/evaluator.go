@@ -28,17 +28,20 @@ func (e *Evaluator) Evaluate(req Request, evidenceMap map[string]Evidence) Evalu
 		Remediation:           []Remediation{},
 	}
 
-	attachedEvidence := make(map[string]Evidence)
-	for _, id := range req.EvidenceIDs {
-		if ev, ok := evidenceMap[id]; ok {
-			attachedEvidence[id] = ev
-		}
-	}
-
 	if e.ast == nil {
 		result.Decision = DecisionEscalate
 		result.Rationale = "Engine error: Policy AST is nil."
 		return result
+	}
+
+	// Edge Case Check 1: Check for unregistered or missing evidence IDs
+	attachedEvidence := make(map[string]Evidence)
+	for _, id := range req.EvidenceIDs {
+		if ev, ok := evidenceMap[id]; ok {
+			attachedEvidence[id] = ev
+		} else {
+			result.MissingOrConflictingEvidence = append(result.MissingOrConflictingEvidence, fmt.Sprintf("Referenced evidence ID %s is missing from the evidence pack.", id))
+		}
 	}
 
 	// Dynamic Pass 1: Non-Negotiable Disallowed Actions (Reject)
@@ -92,15 +95,16 @@ func (e *Evaluator) Evaluate(req Request, evidenceMap map[string]Evidence) Evalu
 		}
 	}
 
-	// Dynamic Pass 3: Conflicting or Stale Evidence Check (Escalate)
+	// Dynamic Pass 3: Conflicting, Stale, or Revoked Evidence Check (Escalate)
 	for id, ev := range attachedEvidence {
-		if ev.Status == "conflicting" || ev.TimestampState == "conflicting" || ev.ReviewerState == "one_valid_one_revoked" {
+		if ev.Status == "conflicting" || ev.TimestampState == "conflicting" || ev.ReviewerState == "one_valid_one_revoked" ||
+			ev.TimestampState == "stale" || ev.Status == "expired" || ev.ReviewerState == "revoked" || ev.Status == "revoked" {
 			result.Decision = DecisionEscalate
-			result.Rationale = "The pre-execution approval record is conflicting, so the request cannot be decided automatically."
-			result.MissingOrConflictingEvidence = append(result.MissingOrConflictingEvidence, fmt.Sprintf("%s %s has conflicting approval state.", id, ev.Type))
-			result.UnresolvedUncertainty = append(result.UnresolvedUncertainty, "The valid pre-execution approval state cannot be established from conflicting evidence.")
+			result.Rationale = "The pre-execution approval record is invalid, stale, or conflicting, so the request cannot be decided automatically."
+			result.MissingOrConflictingEvidence = append(result.MissingOrConflictingEvidence, fmt.Sprintf("%s %s has invalid, stale, or conflicting approval state.", id, ev.Type))
+			result.UnresolvedUncertainty = append(result.UnresolvedUncertainty, "The valid pre-execution approval state cannot be established from conflicting or stale evidence.")
 			for _, eid := range req.EvidenceIDs {
-				if !contains(result.EvidenceUsed, eid) {
+				if _, ok := attachedEvidence[eid]; ok && !contains(result.EvidenceUsed, eid) {
 					result.EvidenceUsed = append(result.EvidenceUsed, eid)
 				}
 			}

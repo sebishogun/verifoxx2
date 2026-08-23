@@ -43,6 +43,21 @@ func TestEvaluator_DynamicPolicyAST_RequestsR1ToR5(t *testing.T) {
 			ReviewerState:  "one_valid_one_revoked",
 			TimestampState: "conflicting",
 		},
+		"E_STALE": {
+			ID:             "E_STALE",
+			Type:           "approval_record",
+			Status:         "valid",
+			Timing:         "before_execution",
+			TimestampState: "stale",
+		},
+		"E_REVOKED": {
+			ID:             "E_REVOKED",
+			Type:           "approval_record",
+			Status:         "revoked",
+			Timing:         "before_execution",
+			ReviewerState:  "revoked",
+			TimestampState: "current",
+		},
 	}
 
 	tests := []struct {
@@ -125,6 +140,45 @@ func TestEvaluator_DynamicPolicyAST_RequestsR1ToR5(t *testing.T) {
 			},
 			expectedDecision: DecisionEscalate,
 		},
+		{
+			name: "Edge Case: Stale evidence timestamp escalates",
+			request: Request{
+				ID:          "EDGE_STALE",
+				Requester:   "external_partner",
+				TrustLevel:  TrustExternal,
+				Action:      ActionAggregateAnalysis,
+				Environment: EnvLocalApproved,
+				UsageLimit:  UsageStandard,
+				EvidenceIDs: []string{"E2", "E_STALE"},
+			},
+			expectedDecision: DecisionEscalate,
+		},
+		{
+			name: "Edge Case: Revoked approval status escalates",
+			request: Request{
+				ID:          "EDGE_REVOKED",
+				Requester:   "external_partner",
+				TrustLevel:  TrustExternal,
+				Action:      ActionAggregateAnalysis,
+				Environment: EnvLocalApproved,
+				UsageLimit:  UsageStandard,
+				EvidenceIDs: []string{"E2", "E_REVOKED"},
+			},
+			expectedDecision: DecisionEscalate,
+		},
+		{
+			name: "Edge Case: Missing referenced evidence ID in evidence pack",
+			request: Request{
+				ID:          "EDGE_MISSING_ID",
+				Requester:   "external_partner",
+				TrustLevel:  TrustExternal,
+				Action:      ActionAggregateAnalysis,
+				Environment: EnvLocalApproved,
+				UsageLimit:  UsageStandard,
+				EvidenceIDs: []string{"E2", "E_NON_EXISTENT_999"},
+			},
+			expectedDecision: DecisionEscalate,
+		},
 	}
 
 	evaluator := NewEvaluator(policyAST)
@@ -136,5 +190,15 @@ func TestEvaluator_DynamicPolicyAST_RequestsR1ToR5(t *testing.T) {
 				t.Errorf("Expected decision %s, got %s for request %s", tt.expectedDecision, res.Decision, tt.request.ID)
 			}
 		})
+	}
+}
+
+func TestEvaluator_NilPolicyAST_GracefulEscalation(t *testing.T) {
+	evaluator := NewEvaluator(nil)
+	req := Request{ID: "ERR_NIL"}
+	res := evaluator.Evaluate(req, map[string]Evidence{})
+
+	if res.Decision != DecisionEscalate {
+		t.Errorf("Expected Escalate for nil Policy AST, got %s", res.Decision)
 	}
 }
