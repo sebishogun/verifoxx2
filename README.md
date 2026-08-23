@@ -12,65 +12,7 @@ Following the completion of the baseline candidate exercise, the implementation 
 
 ---
 
-## 2. Performance and Benchmarks
-
-Verifoxx is engineered for low-latency, high-throughput batch evaluation. Benchmarks demonstrate zero heap allocations across hot evaluation paths and processing speeds operating near CPU memory bandwidth limits.
-
-| Benchmark Target | Scale / Workload | Latency / Throughput | Heap Allocations | Memory Overhead |
-| :--- | :---: | :---: | :---: | :---: |
-| **Bitwise NOT Bitplanes** | 8,192 row batch | **33.8 ns** (121,115 MB/s) | **0 B/op** | **0 allocs/op** |
-| **Bitwise AND Bitplanes** | 8,192 row batch | **46.4 ns** (132,246 MB/s) | **0 B/op** | **0 allocs/op** |
-| **Bitwise OR Bitplanes** | 8,192 row batch | **49.9 ns** (123,049 MB/s) | **0 B/op** | **0 allocs/op** |
-| **Scalar Batch Execution** | 1,024 requests | **250 µs** (~244 ns / req) | **0 B/op** | **0 allocs/op** |
-| **Evidence Evaluation** | Batch evidence pack | **10.5 µs** | **0 B/op** | **0 allocs/op** |
-| **Symbol Intern Lookup** | Single lookup | **7.2 ns** | **0 B/op** | **0 allocs/op** |
-
-*Environment: AMD Ryzen AI Max+ 395 under `go test -bench . -benchmem`.*
-
----
-
-## 3. Architecture Overview
-
-The system employs a four-tier compiler and runtime architecture:
-
-```
-+-----------------------------------------------------------------+
-| Tier 4: Enterprise Infrastructure & Adapters                    |
-| (PostgreSQL PGQ Audit Log, gRPC Service, TUI, CLI)              |
-+-----------------------------------------------------------------+
-| Tier 3: Zero-Alloc Bytecode & Vectorized Kernel                 |
-| (Structure-of-Arrays, Bitplane Masks, AVX2/512 SIMD)           |
-+-----------------------------------------------------------------+
-| Tier 2: Compiler & Static Validation Pipeline                   |
-| (DAG Reachability, Cycle Detection, Symbol Interning)           |
-+-----------------------------------------------------------------+
-| Tier 1: Semantic IR & Bounded Decision Logic                    |
-| (Approve, Reject, Revise, Escalate + Rationale Engine)          |
-+-----------------------------------------------------------------+
-```
-
-### Tier Descriptions
-
-1. **Tier 1: Semantic Intermediate Representation (IR)**
-   - Models non-negotiable restrictions vs. revisable conditions.
-   - Computes deterministic 4-state decisions with full evidence provenance and missing or conflicting attestation tracking.
-
-2. **Tier 2: Compiler and Static Validation Pipeline**
-   - Validates directed acyclic graph (DAG) reachability and eliminates dependency cycles.
-   - Performs symbol interning for fields and values to eliminate string allocations during rule checks.
-
-3. **Tier 3: Zero-Allocation Vector Kernel**
-   - **Structure-of-Arrays (SoA)**: Stores data columns contiguously for optimal L1/L2 cache locality.
-   - **Bitplane Vector Execution**: 64-bit word operations evaluate 64 requests per CPU cycle.
-   - **Register Liveness Analysis**: DAG slot allocation recycles intermediate memory registers (`0 B/op`).
-   - **Hardware SIMD Facade (`internal/simdops`)**: Supports 256/512-bit vector dispatch via `github.com/sebishogun/simd`.
-
-4. **Tier 4: Enterprise Adapters**
-   - Features reflection-free streaming JSON decoders, a CLI/TUI interface, a gRPC server, and a PostgreSQL 19 SQL/PGQ audit persistence layer.
-
----
-
-## 4. Decision Outcomes
+## 2. Decision Outcomes
 
 The engine produces four bounded decision outcomes:
 
@@ -81,55 +23,65 @@ The engine produces four bounded decision outcomes:
 
 ---
 
-## 5. Usage and Execution
+## 3. Quickstart and Usage
 
 ### Build and Verification Commands
 
-```bash
-# Run unit and integration tests
-go test -timeout 60s ./...
-
-# Run performance benchmarks with allocation verification
-go test -timeout 120s -run='^$' -bench='.' -benchmem ./...
-
-# Compile executable binary
-go build -o bin/verifoxx ./cmd/verifoxx
-```
-
-### CLI Evaluation
+A `Makefile` is provided with standard targets for compilation, testing, and evaluation:
 
 ```bash
-./bin/verifoxx eval \
-  --policy policies/verifoxx/policy.json \
-  --requests internal/fixtures/verifoxx-requests.json \
-  --evidence internal/fixtures/verifoxx-evidence.json \
-  --output results/requests.json
+# Run unit tests
+make test
+
+# Build the verifoxx binary to bin/verifoxx
+make build
+
+# Build and execute policy evaluation against requests R1-R5
+make eval
+
+# Run static analysis
+make vet
+
+# Clean build artifacts and results
+make clean
 ```
 
 ---
 
-## 6. Directory Structure
+## 4. Directory Structure
 
 ```
 .
-├── cmd/verifoxx/             # CLI application entry point
-├── docs/                     # Design whitepapers and implementation plans
-│   └── plans/                # Architecture specifications and benchmark plans
-├── internal/
-│   ├── adapters/             # Streaming JSON decoders, CLI/TUI, gRPC handlers
-│   ├── arena/                # Memory slab allocators
-│   ├── ast/                  # Intermediate semantic representation
-│   ├── compile/              # Lowering passes, reachability analysis, liveness planning
-│   ├── eval/                 # Core batch evaluator, SoA execution, SIMD dispatch
-│   ├── program/              # Compiled immutable program layout
-│   ├── schema/               # Symbol interning and schema definitions
-│   ├── simdops/              # Hardware SIMD vector operations
-│   └── truth/                # Bitplane logic and SWAR vector operations
-└── results/                  # Machine-readable output files
+├── Makefile                                  # Build and evaluation automation
+├── README.md                                 # Executive overview and repository guide
+├── Requirements.md                           # Original assignment specification
+├── go.mod                                    # Go module definition
+├── cmd/
+│   └── verifoxx/
+│       └── main.go                           # CLI executable entry point
+├── pkg/
+│   ├── policy/
+│   │   ├── ast.go                            # Policy AST parser and IR representation
+│   │   ├── types.go                          # Request, Evidence, and Decision models
+│   │   ├── evaluator.go                      # Dynamic semantic policy evaluator
+│   │   └── evaluator_test.go                 # Unit test suite for requests R1-R5
+│   └── format/
+│       └── json.go                           # JSON loader and results exporter
+├── fixtures/
+│   ├── requests.json                         # Candidate request pack (R1-R5)
+│   └── evidence.json                         # Candidate evidence pack (E1-E4)
+├── policies/
+│   └── policy.json                           # Policy AST JSON definition (R1-R3)
+├── results/
+│   └── requests.json                         # Generated machine-readable evaluation results
+└── docs/
+    ├── DESIGN_NOTE.md                        # 1-page design note (candidate brief)
+    └── plans/
+        └── 2026-08-23-production-evolution-design.md  # Extended architecture whitepaper
 ```
 
 ---
 
-## 7. License
+## 5. License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).
