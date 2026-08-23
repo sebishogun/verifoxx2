@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "policy_name": "verifoxx-policy",
+  "policy_version": "1.0.0",
+  "results": [
+    {
+      "request_id": "R1",
+      "decision": "Approve",
+      "rationale": "The request satisfies all relevant requirements and supporting evidence.",
+      "requirements_applied": [
+        "R1",
+        "R2"
+      ],
+      "evidence_used": [
+        "E2",
+        "E1"
+      ],
+      "missing_or_conflicting_evidence": [],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": []
+    },
+    {
+      "request_id": "R2",
+      "decision": "Reject",
+      "rationale": "The requested individual-record export violates R1's non-negotiable disclosure restriction.",
+      "requirements_applied": [
+        "R1",
+        "R2"
+      ],
+      "evidence_used": [
+        "E1",
+        "E2"
+      ],
+      "missing_or_conflicting_evidence": [],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": []
+    },
+    {
+      "request_id": "R3",
+      "decision": "Revise",
+      "rationale": "The above-standard usage request can be corrected by providing the required scoped usage-adjustment approval.",
+      "requirements_applied": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "evidence_used": [
+        "E2"
+      ],
+      "missing_or_conflicting_evidence": [
+        "E3 usage_limit_adjustment is missing from the request."
+      ],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": [
+        "Whether a qualifying usage adjustment will be approved remains unresolved."
+      ],
+      "remediation": [
+        {
+          "action": "add_evidence",
+          "evidence_kind": "usage_limit_adjustment",
+          "description": "Provide a valid usage_limit_adjustment approval record scoped for trusted_internal_only."
+        }
+      ]
+    },
+    {
+      "request_id": "R4",
+      "decision": "Escalate",
+      "rationale": "The approved local execution environment cannot be verified because the required attestation is missing or unverified.",
+      "requirements_applied": [
+        "R1",
+        "R2"
+      ],
+      "evidence_used": [
+        "E1"
+      ],
+      "missing_or_conflicting_evidence": [
+        "E2 execution_environment_attestation is missing or unverified for the request environment."
+      ],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": [
+        "The request's execution environment lacks a verified approved-local attestation."
+      ]
+    },
+    {
+      "request_id": "R5",
+      "decision": "Escalate",
+      "rationale": "The pre-execution approval record is conflicting, so the request cannot be decided automatically.",
+      "requirements_applied": [
+        "R1",
+        "R2"
+      ],
+      "evidence_used": [
+        "E2",
+        "E3",
+        "E4"
+      ],
+      "missing_or_conflicting_evidence": [
+        "E4 approval_record has conflicting approval state."
+      ],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": [
+        "The valid pre-execution approval state cannot be established from conflicting evidence."
+      ]
+    }
+  ]
+}
