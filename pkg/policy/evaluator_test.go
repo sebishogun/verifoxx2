@@ -4,7 +4,12 @@ import (
 	"testing"
 )
 
-func TestEvaluator_RequestsR1ToR5(t *testing.T) {
+func TestEvaluator_DynamicPolicyAST_RequestsR1ToR5(t *testing.T) {
+	policyAST, err := LoadPolicyAST("../../policies/policy.json")
+	if err != nil {
+		t.Fatalf("Failed to load policy AST: %v", err)
+	}
+
 	evidenceMap := map[string]Evidence{
 		"E1": {
 			ID:             "E1",
@@ -122,7 +127,7 @@ func TestEvaluator_RequestsR1ToR5(t *testing.T) {
 		},
 	}
 
-	evaluator := NewEvaluator()
+	evaluator := NewEvaluator(policyAST)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

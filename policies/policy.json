@@ -4,18 +4,62 @@
   "requirements": [
     {
       "id": "R1",
-      "description": "External partners may request aggregate analytical outputs from protected dataset only if no individual-level information is disclosed and a valid approval record exists before execution.",
-      "non_negotiable": true
+      "description": "External partners may request aggregate analytical outputs from the protected dataset only if no individual-level information is disclosed and a valid approval record exists before execution.",
+      "non_negotiable": true,
+      "clauses": [
+        {
+          "id": "C1_DISCLOSURE_RESTRICTION",
+          "kind": "disallowed_action",
+          "disallowed_actions": ["row_level_export"],
+          "rejection_rationale": "The requested individual-record export violates R1's non-negotiable disclosure restriction."
+        },
+        {
+          "id": "C1_APPROVAL_RECORD",
+          "kind": "required_evidence",
+          "evidence_type": "approval_record",
+          "required_status": "valid",
+          "required_timing": "before_execution",
+          "required_timestamp_state": "current"
+        }
+      ]
     },
     {
       "id": "R2",
       "description": "Any processing involving protected data must run in the approved local execution environment. If the execution environment cannot be verified, the request must not be automatically approved.",
-      "non_negotiable": true
+      "non_negotiable": true,
+      "clauses": [
+        {
+          "id": "C2_ENV_VERIFICATION",
+          "kind": "required_environment",
+          "required_env": "local_approved_env",
+          "evidence_type": "execution_environment_attestation",
+          "required_status": "verified",
+          "required_attestation_state": "valid",
+          "escalation_rationale": "The approved local execution environment cannot be verified because the required attestation is missing or unverified."
+        }
+      ]
     },
     {
       "id": "R3",
-      "description": "Trusted internal teams may request a temporary increase above the standard usage limit, but only where a specific usage-adjustment approval exists. Disclosure restrictions and pre-execution approval conditions cannot be relaxed.",
-      "non_negotiable": false
+      "description": "Trusted internal teams may request a temporary increase above the standard usage limit, but only where a specific usage-adjustment approval exists. Disclosure restrictions and pre-execution approval conditions cannot be relaxed. If approval evidence is unclear, stale or conflicting, the case should be escalated rather than assumed safe.",
+      "non_negotiable": false,
+      "clauses": [
+        {
+          "id": "C3_USAGE_LIMIT_ADJUSTMENT",
+          "kind": "usage_limit_check",
+          "above_limit_value": "above_standard_limit",
+          "allowed_trust_level": "trusted_internal",
+          "evidence_type": "usage_limit_adjustment",
+          "required_status": "approved",
+          "required_scope": "trusted_internal_only",
+          "revision_rationale": "The above-standard usage request can be corrected by providing the required scoped usage-adjustment approval.",
+          "remediation": {
+            "action": "add_evidence",
+            "evidence_kind": "usage_limit_adjustment",
+            "description": "Provide a valid usage_limit_adjustment approval record scoped for trusted_internal_only."
+          }
+        }
+      ]
     }
   ]
 }

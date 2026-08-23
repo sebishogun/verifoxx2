@@ -80,7 +80,7 @@
         "E1"
       ],
       "missing_or_conflicting_evidence": [
-        "E2 execution_environment_attestation is missing or unverified for the request environment."
+        "execution_environment_attestation execution_environment_attestation is missing or unverified for the request environment."
       ],
       "assumptions": [
         "The supplied structured fields faithfully represent the underlying request and evidence records."

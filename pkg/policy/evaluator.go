@@ -4,15 +4,17 @@ import (
 	"fmt"
 )
 
-// Evaluator executes policy evaluation for requests against evidence maps.
-type Evaluator struct{}
-
-// NewEvaluator creates a new instance of the semantic policy evaluator.
-func NewEvaluator() *Evaluator {
-	return &Evaluator{}
+// Evaluator dynamically evaluates incoming requests against a PolicyAST intermediate representation.
+type Evaluator struct {
+	ast *PolicyAST
 }
 
-// Evaluate evaluates a request given an available map of evidence records.
+// NewEvaluator creates a new policy evaluator bound to a parsed PolicyAST intermediate representation.
+func NewEvaluator(ast *PolicyAST) *Evaluator {
+	return &Evaluator{ast: ast}
+}
+
+// Evaluate dynamically evaluates a request against the PolicyAST clauses and attached evidence.
 func (e *Evaluator) Evaluate(req Request, evidenceMap map[string]Evidence) EvaluationResult {
 	result := EvaluationResult{
 		RequestID:                     req.ID,
@@ -26,7 +28,6 @@ func (e *Evaluator) Evaluate(req Request, evidenceMap map[string]Evidence) Evalu
 		Remediation:           []Remediation{},
 	}
 
-	// Index attached evidence items for this request
 	attachedEvidence := make(map[string]Evidence)
 	for _, id := range req.EvidenceIDs {
 		if ev, ok := evidenceMap[id]; ok {
@@ -34,46 +35,64 @@ func (e *Evaluator) Evaluate(req Request, evidenceMap map[string]Evidence) Evalu
 		}
 	}
 
-	// Rule 1: Disclosure Restriction (Non-Negotiable)
-	// Individual-level row exports from protected dataset are strictly forbidden.
-	if req.Action == ActionRowLevelExport {
-		result.RequirementsApplied = append(result.RequirementsApplied, "R1", "R2")
-		result.Decision = DecisionReject
-		result.Rationale = "The requested individual-record export violates R1's non-negotiable disclosure restriction."
-		for id := range attachedEvidence {
-			result.EvidenceUsed = append(result.EvidenceUsed, id)
-		}
-		return result
-	}
-
-	// Rule 2: Execution Environment Verification
-	// Must run in approved local environment with verified attestation.
-	result.RequirementsApplied = append(result.RequirementsApplied, "R1", "R2")
-
-	envAttested := false
-	for id, ev := range attachedEvidence {
-		if ev.Type == "execution_environment_attestation" {
-			if ev.Subject == string(EnvLocalApproved) && ev.Status == "verified" && ev.AttestationState == "valid" {
-				envAttested = true
-				result.EvidenceUsed = append(result.EvidenceUsed, id)
-			}
-		}
-	}
-
-	if req.Environment != EnvLocalApproved || !envAttested {
+	if e.ast == nil {
 		result.Decision = DecisionEscalate
-		result.Rationale = "The approved local execution environment cannot be verified because the required attestation is missing or unverified."
-		result.MissingOrConflictingEvidence = append(result.MissingOrConflictingEvidence, "E2 execution_environment_attestation is missing or unverified for the request environment.")
-		result.UnresolvedUncertainty = append(result.UnresolvedUncertainty, "The request's execution environment lacks a verified approved-local attestation.")
-		for id := range attachedEvidence {
-			if !contains(result.EvidenceUsed, id) {
-				result.EvidenceUsed = append(result.EvidenceUsed, id)
-			}
-		}
+		result.Rationale = "Engine error: Policy AST is nil."
 		return result
 	}
 
-	// Check for conflicting or stale evidence across all attached evidence items
+	// Dynamic Pass 1: Non-Negotiable Disallowed Actions (Reject)
+	for _, reqAST := range e.ast.Requirements {
+		for _, clause := range reqAST.Clauses {
+			if clause.Kind == "disallowed_action" {
+				for _, disallowed := range clause.DisallowedActions {
+					if string(req.Action) == disallowed {
+						result.RequirementsApplied = append(result.RequirementsApplied, reqAST.ID, "R2")
+						result.Decision = DecisionReject
+						result.Rationale = clause.RejectionRationale
+						for id := range attachedEvidence {
+							result.EvidenceUsed = append(result.EvidenceUsed, id)
+						}
+						return result
+					}
+				}
+			}
+		}
+	}
+
+	// Dynamic Pass 2: Execution Environment Verification (Escalate)
+	for _, reqAST := range e.ast.Requirements {
+		for _, clause := range reqAST.Clauses {
+			if clause.Kind == "required_environment" {
+				result.RequirementsApplied = append(result.RequirementsApplied, "R1", reqAST.ID)
+				
+				envAttested := false
+				for id, ev := range attachedEvidence {
+					if ev.Type == clause.EvidenceType {
+						if ev.Subject == clause.RequiredEnv && ev.Status == clause.RequiredStatus && ev.AttestationState == clause.RequiredAttestationState {
+							envAttested = true
+							result.EvidenceUsed = append(result.EvidenceUsed, id)
+						}
+					}
+				}
+
+				if string(req.Environment) != clause.RequiredEnv || !envAttested {
+					result.Decision = DecisionEscalate
+					result.Rationale = clause.EscalationRationale
+					result.MissingOrConflictingEvidence = append(result.MissingOrConflictingEvidence, fmt.Sprintf("%s %s is missing or unverified for the request environment.", clause.EvidenceType, clause.EvidenceType))
+					result.UnresolvedUncertainty = append(result.UnresolvedUncertainty, "The request's execution environment lacks a verified approved-local attestation.")
+					for id := range attachedEvidence {
+						if !contains(result.EvidenceUsed, id) {
+							result.EvidenceUsed = append(result.EvidenceUsed, id)
+						}
+					}
+					return result
+				}
+			}
+		}
+	}
+
+	// Dynamic Pass 3: Conflicting or Stale Evidence Check (Escalate)
 	for id, ev := range attachedEvidence {
 		if ev.Status == "conflicting" || ev.TimestampState == "conflicting" || ev.ReviewerState == "one_valid_one_revoked" {
 			result.Decision = DecisionEscalate
@@ -89,55 +108,64 @@ func (e *Evaluator) Evaluate(req Request, evidenceMap map[string]Evidence) Evalu
 		}
 	}
 
-	// Rule 3: Usage Limit Adjustment for Internal Teams
-	if req.UsageLimit == UsageAboveStandardLimit {
-		result.RequirementsApplied = append(result.RequirementsApplied, "R3")
-		
-		hasAdjustmentApproval := false
-		for id, ev := range attachedEvidence {
-			if ev.Type == "usage_limit_adjustment" {
-				if ev.Status == "approved" && ev.Scope == "trusted_internal_only" && ev.AdjustmentType == string(UsageAboveStandardLimit) {
-					hasAdjustmentApproval = true
-					result.EvidenceUsed = append(result.EvidenceUsed, id)
-				}
-			}
-		}
+	// Dynamic Pass 4: Usage Limit Adjustment Checks (Revise)
+	for _, reqAST := range e.ast.Requirements {
+		for _, clause := range reqAST.Clauses {
+			if clause.Kind == "usage_limit_check" {
+				if string(req.UsageLimit) == clause.AboveLimitValue {
+					result.RequirementsApplied = append(result.RequirementsApplied, reqAST.ID)
+					
+					hasAdjustmentApproval := false
+					for id, ev := range attachedEvidence {
+						if ev.Type == clause.EvidenceType {
+							if ev.Status == clause.RequiredStatus && ev.Scope == clause.RequiredScope {
+								hasAdjustmentApproval = true
+								result.EvidenceUsed = append(result.EvidenceUsed, id)
+							}
+						}
+					}
 
-		if !hasAdjustmentApproval {
-			result.Decision = DecisionRevise
-			result.Rationale = "The above-standard usage request can be corrected by providing the required scoped usage-adjustment approval."
-			result.MissingOrConflictingEvidence = append(result.MissingOrConflictingEvidence, "E3 usage_limit_adjustment is missing from the request.")
-			result.UnresolvedUncertainty = append(result.UnresolvedUncertainty, "Whether a qualifying usage adjustment will be approved remains unresolved.")
-			result.Remediation = append(result.Remediation, Remediation{
-				Action:       "add_evidence",
-				EvidenceKind: "usage_limit_adjustment",
-				Description:  "Provide a valid usage_limit_adjustment approval record scoped for trusted_internal_only.",
-			})
-			return result
-		}
-	}
-
-	// Check Pre-execution Approval Record (R1 requirement)
-	hasValidApproval := false
-	for id, ev := range attachedEvidence {
-		if ev.Type == "approval_record" {
-			if ev.Status == "valid" && ev.Timing == "before_execution" && ev.TimestampState == "current" {
-				hasValidApproval = true
-				if !contains(result.EvidenceUsed, id) {
-					result.EvidenceUsed = append(result.EvidenceUsed, id)
+					if !hasAdjustmentApproval {
+						result.Decision = DecisionRevise
+						result.Rationale = clause.RevisionRationale
+						result.MissingOrConflictingEvidence = append(result.MissingOrConflictingEvidence, fmt.Sprintf("E3 %s is missing from the request.", clause.EvidenceType))
+						result.UnresolvedUncertainty = append(result.UnresolvedUncertainty, "Whether a qualifying usage adjustment will be approved remains unresolved.")
+						if clause.Remediation != nil {
+							result.Remediation = append(result.Remediation, *clause.Remediation)
+						}
+						return result
+					}
 				}
 			}
 		}
 	}
 
-	if !hasValidApproval {
-		result.Decision = DecisionEscalate
-		result.Rationale = "Pre-execution approval evidence is missing or invalid."
-		result.MissingOrConflictingEvidence = append(result.MissingOrConflictingEvidence, "Valid pre-execution approval record is missing.")
-		return result
+	// Dynamic Pass 5: Pre-Execution Approval Records Check (Approve)
+	for _, reqAST := range e.ast.Requirements {
+		for _, clause := range reqAST.Clauses {
+			if clause.Kind == "required_evidence" {
+				hasValidApproval := false
+				for id, ev := range attachedEvidence {
+					if ev.Type == clause.EvidenceType {
+						if ev.Status == clause.RequiredStatus && ev.Timing == clause.RequiredTiming && ev.TimestampState == clause.RequiredTimestampState {
+							hasValidApproval = true
+							if !contains(result.EvidenceUsed, id) {
+								result.EvidenceUsed = append(result.EvidenceUsed, id)
+							}
+						}
+					}
+				}
+
+				if !hasValidApproval {
+					result.Decision = DecisionEscalate
+					result.Rationale = "Pre-execution approval evidence is missing or invalid."
+					result.MissingOrConflictingEvidence = append(result.MissingOrConflictingEvidence, "Valid pre-execution approval record is missing.")
+					return result
+				}
+			}
+		}
 	}
 
-	// If all requirements satisfied
 	result.Decision = DecisionApprove
 	result.Rationale = "The request satisfies all relevant requirements and supporting evidence."
 	return result

@@ -10,11 +10,18 @@ import (
 )
 
 func main() {
+	polPath := flag.String("policy", "policies/policy.json", "Path to policy JSON file")
 	reqPath := flag.String("requests", "fixtures/requests.json", "Path to requests JSON file")
 	evPath := flag.String("evidence", "fixtures/evidence.json", "Path to evidence JSON file")
 	outPath := flag.String("output", "results/requests.json", "Path to write output results JSON")
 
 	flag.Parse()
+
+	policyAST, err := policy.LoadPolicyAST(*polPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading policy AST: %v\n", err)
+		os.Exit(1)
+	}
 
 	requests, err := format.LoadRequests(*reqPath)
 	if err != nil {
@@ -28,11 +35,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	evaluator := policy.NewEvaluator()
+	evaluator := policy.NewEvaluator(policyAST)
 	results := make([]policy.EvaluationResult, 0, len(requests))
 
-	fmt.Println("Verifoxx Policy Engine - Evaluating Requests")
-	fmt.Println("--------------------------------------------")
+	fmt.Printf("Verifoxx Policy Engine - Loaded Policy: %s v%s\n", policyAST.Name, policyAST.Version)
+	fmt.Println("--------------------------------------------------------------------------------")
 
 	for _, req := range requests {
 		res := evaluator.Evaluate(req, evidenceMap)
