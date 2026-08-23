@@ -1,0 +1,57 @@
+[
+  {
+    "id": "R1",
+    "requester": "external_partner",
+    "trust_level": "external",
+    "action": "aggregate_analysis",
+    "output_kind": "aggregate_counts",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "standard",
+    "evidence_ids": ["E1", "E2"]
+  },
+  {
+    "id": "R2",
+    "requester": "external_partner",
+    "trust_level": "external",
+    "action": "row_level_export",
+    "output_kind": "individual_records",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "standard",
+    "evidence_ids": ["E1", "E2"]
+  },
+  {
+    "id": "R3",
+    "requester": "internal_team",
+    "trust_level": "trusted_internal",
+    "action": "aggregate_analysis",
+    "output_kind": "aggregate_counts",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "above_standard_limit",
+    "evidence_ids": ["E1", "E2"]
+  },
+  {
+    "id": "R4",
+    "requester": "external_partner",
+    "trust_level": "external",
+    "action": "aggregate_analysis",
+    "output_kind": "aggregate_counts",
+    "dataset": "protected_dataset",
+    "environment": "unverified_remote_env",
+    "usage_limit": "standard",
+    "evidence_ids": ["E1"]
+  },
+  {
+    "id": "R5",
+    "requester": "internal_team",
+    "trust_level": "trusted_internal",
+    "action": "aggregate_analysis",
+    "output_kind": "aggregate_counts",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "above_standard_limit",
+    "evidence_ids": ["E2", "E3", "E4"]
+  }
+]
