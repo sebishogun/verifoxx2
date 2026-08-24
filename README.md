@@ -37,10 +37,9 @@ Program + Batch -> truth/reason bitplanes -> numeric result Batch
 numeric results + source IDs -> human-readable OutputPack -> JSON
 ```
 
-The repository is deliberately bounded: one process, standard library only,
-and no persistence, network service, natural-language parser, SIMD kernel, or
-parallel scheduler. It is a compact compiler/runtime foundation, not a claim of
-a finished policy platform.
+This implementation is a single-process Go CLI built with the standard
+library. It does not include persistence, a network service, natural-language
+parsing, SIMD, or parallel scheduling.
 
 ## Quickstart
 
@@ -98,15 +97,15 @@ The exact machine-readable output, including provenance and uncertainty, is in
 | What is the short design argument? | [`docs/DESIGN_NOTE.md`](docs/DESIGN_NOTE.md) |
 | How are the rules represented? | [`policies/policy.json`](policies/policy.json) |
 | How does data move through the engine? | [`docs/architecture.md`](docs/architecture.md) |
-| What are the measured costs and exclusions? | [`docs/performance.md`](docs/performance.md) |
+| How was performance measured and reproduced? | [`docs/performance.md`](docs/performance.md) |
 | What were the supplied inputs? | [`fixtures/requests.json`](fixtures/requests.json) and [`fixtures/evidence.json`](fixtures/evidence.json) |
 | What output must remain exact? | [`results/requests.json`](results/requests.json) |
 | Which semantic edge cases are demonstrated? | [`fixtures/demo/requests.json`](fixtures/demo/requests.json) and [`fixtures/demo/expected.json`](fixtures/demo/expected.json) |
 | Where are golden checks enforced? | [`internal/conformance/golden_test.go`](internal/conformance/golden_test.go) |
-| Where is implementation history recorded? | [`docs/plans/`](docs/plans/) |
+| Why were the major architecture choices made? | [`docs/plans/`](docs/plans/) |
 
-The plan documents explain how changes were developed. The README, design note,
-architecture, policy, fixtures, and performance report are the current
+The design records explain why the larger changes were made. The README, design
+note, architecture, policy, fixtures, and performance report are the current
 reference documents.
 
 ## Key Design Choices
@@ -126,9 +125,8 @@ reference documents.
 
 ### Performance Tenets
 
-This is a performance-focused project, but performance does not mean adding
-low-level instructions first. The implementation starts with data shape and
-lifetime:
+Performance work starts with data layout and object lifetime rather than
+low-level instructions:
 
 1. Put columnwise data in contiguous parallel arrays.
 2. Compile and validate policy text once; do not interpret it per request.
@@ -139,10 +137,11 @@ lifetime:
 7. Measure cold compilation, first use, steady framing, materialization, and
    warm evaluation separately.
 
-The current runtime is scalar and sequential. SIMD and parallel scheduling are
-extension seams enabled by the layout, not features claimed by this repository.
-See [`docs/architecture.md`](docs/architecture.md) for layouts and ownership and
-[`docs/performance.md`](docs/performance.md) for reproducible measurements.
+The evaluator currently runs scalar and sequentially. Its columnar layout can
+support SIMD or row sharding later. See
+[`docs/architecture.md`](docs/architecture.md) for layouts and ownership. The
+benchmark commands, measured results, and exclusions are recorded in
+[`docs/performance.md`](docs/performance.md).
 
 ## Edge Cases We Designed For
 
@@ -325,8 +324,8 @@ The four paths default to the supplied files, with output defaulting to
 `results/requests.json`. `--output -` reserves stdout for indented result JSON;
 the decision table and errors go to stderr. A file output is written to a
 temporary file in the destination directory, set to mode `0644`, and renamed
-over the destination. The directory is not synced, so this is atomic
-replacement rather than a claim of crash durability.
+over the destination. The rename makes replacement atomic. Because the
+directory is not synced, it does not guarantee durability after a system crash.
 
 ### Repeated Framed Packs
 
@@ -445,8 +444,8 @@ Warm evaluation measured `552.6-594.8 ns/op` for one row and
 `146.511-149.817 us/op` for 1,024 rows; every warm evaluator size reported
 `0 B/op` and `0 allocs/op`.
 
-These are local microbenchmark ranges, not service-throughput claims. Commands,
-lifecycle stages, data-size formulas, and exclusions are in
+These figures describe local microbenchmarks. Commands, lifecycle stages,
+data-size formulas, and excluded work are documented in
 [`docs/performance.md`](docs/performance.md).
 
 ## Repository Layout
@@ -495,15 +494,13 @@ make compose-demo
 
 ## AI Tool Use
 
-AI tooling was used through OpenCode for design exploration, implementation,
-test construction, code review, documentation, and running the verification
-matrix. The human supplied requirements, approved architecture and tradeoffs,
-and remained responsible for the final submission. Runtime policy compilation
-and decisions are deterministic Go code and do not call an AI model.
+OpenCode was used to explore designs, draft tests and documentation, review
+code, and run verification commands. The author reviewed the policy model,
+implementation, and final decisions. Runtime decisions are made by the Go
+engine and do not call an AI model.
 
 ## Evolution
 
-This repository stops at the compact compiled scalar engine required by the
-exercise. [Verifoxx](https://github.com/sebishogun/Verifoxx) is the larger
-evolution; it adds SIMD, scheduling, persistence, services, and debugging
-outside this submission's scope.
+This repository contains the compiled scalar engine built for the exercise.
+The larger [Verifoxx](https://github.com/sebishogun/Verifoxx) project adds SIMD,
+scheduling, persistence, services, and debugging.

@@ -1,60 +1,50 @@
 # Verifoxx Design Note
 
-## From Requirements To A Semantic Model
+## Semantic Model
 
-The requirements become a bounded JSON expression AST, not request-specific
-code. Ordered requirements define applicability and clauses using `equal`,
-`in`, `all`, and qualified `evidence_matches`. Each clause maps eight
-truth/evidence states to a decision, explanation, and optional remediation.
-The shipped model is [`policies/policy.json`](../policies/policy.json).
+I modeled each requirement in two parts: when it applies and what must be true
+when it does. Applicability uses request fields such as trust level, dataset,
+and usage limit. Clauses describe the required request values or supporting
+evidence. For every clause, the policy records the decision and explanation for
+eight states: satisfied, false, missing, invalid, stale, unclear, unverifiable,
+and conflicting. The complete model is in
+[`policies/policy.json`](../policies/policy.json).
 
-This is more than flat extraction because a boolean cannot distinguish absent
-approval from invalid, stale, incomplete, unverifiable, or conflicting
-evidence. The evaluator preserves positive, negative, and reason planes.
-Numeric results retain applicable requirements, evidence, the winning
-clause/reason, uncertainty, and remediation before those IDs become bounded
-human-readable output.
+This keeps more meaning than flat field extraction. A missing approval, a stale
+approval, and two conflicting approvals are different situations and can lead
+to different decisions. Results also retain the requirements that applied, the
+evidence considered, any remaining uncertainty, and an allowed remediation.
+Nothing branches on the five supplied request IDs.
 
 ## Decision Process
 
-All applicable clauses are evaluated. Findings use
-`Reject > Escalate > Revise > Approve`; equal ranks retain request,
-requirement, and clause order. This makes hard disclosure violations win over
-uncertainty, and uncertainty win over a bounded usage correction. The supplied
-requests resolve to `Approve`, `Reject`, `Revise`, `Escalate`, and `Escalate`
-for R1 through R5 respectively.
+For each request, the evaluator validates the request fields, resolves its
+evidence references, and checks every applicable clause. The final precedence
+is `Reject > Escalate > Revise > Approve`. Policy order breaks ties, so the same
+input always produces the same rationale.
 
-`Escalate` covers unknown or missing semantics, absent references, stale,
-unclear or conflicting mandatory evidence, and unverifiable environments. The
-engine does not guess. `Revise` is reserved for an explicit bounded correction,
-such as lowering usage or supplying an allowed evidence item. `Reject` remains
-a configured non-negotiable violation.
+`Reject` is used for a non-negotiable violation such as individual-level
+disclosure. `Revise` is used when a specific change can make the request
+acceptable, such as lowering the usage limit or supplying an allowed approval.
+`Escalate` is used when required facts cannot be established safely, including
+missing references, stale or conflicting evidence, and an unverifiable
+environment. The supplied requests produce `Approve`, `Reject`, `Revise`,
+`Escalate`, and `Escalate` for R1 through R5.
 
 ## Performance-Aware Runtime
 
-Validation and postorder compilation turn policy text into an immutable numeric
-`Program` of parallel opcode arrays, typed IDs, interned text, and CSR ranges.
-Requests and evidence become a field-major `Batch`; a private `Context` holds
-truth/reason bitplanes; caller-owned `result.Batch` columns receive decisions;
-`OutputPack` reconstructs text only after evaluation.
-
-```text
-Policy -> Program -> Batch -> Context/result.Batch -> OutputPack
-```
-
-The data layout is the performance decision: compile once, resolve strings
-before the kernel, keep columns contiguous, size storage before evaluation, and
-reuse one private `Session` per sequential worker. Correctly sized warm
-evaluation performs zero allocations. The implementation is scalar; SIMD and
-parallel row scheduling are extension seams rather than current claims.
+The policy is validated and compiled once. Request and evidence strings are
+then converted to numeric columns before evaluation, while explanations are
+rebuilt afterward. This adds some implementation complexity, but repeated
+evaluation avoids string lookups and allocation in the warm path. The runtime
+is currently scalar and sequential. The detailed layouts are documented in
+[`architecture.md`](architecture.md), and the benchmark setup and results are
+in [`performance.md`](performance.md).
 
 ## Scope And Next Steps
 
-This repository remains one process with no service, persistence,
-natural-language parser, or policy authoring system. Future work includes richer
-vocabularies, reviewed authoring, fuzzing, broader provenance, SIMD kernels, and
-row scheduling. See [`architecture.md`](architecture.md) for types, layouts,
-ownership, and edge boundaries, and [`performance.md`](performance.md) for
-reproducible measurements and exclusions. The larger
-[Verifoxx](https://github.com/sebishogun/Verifoxx) project explores the broader
-runtime.
+The evaluator assumes the structured request and evidence fields faithfully
+represent their source records. My next priorities would be safer policy
+authoring, fuzzing malformed policies and evidence packs, and more detailed
+provenance for reviewers. A service or persistence layer would come later, once
+there was a concrete deployment need.
