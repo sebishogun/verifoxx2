@@ -51,6 +51,22 @@ func TestProgramValidateAcceptsCompilerOutput(t *testing.T) {
 	}
 }
 
+var materializedSymbol string
+
+func TestProgramSymbolAllocation(t *testing.T) {
+	compiled := validProgram(t)
+	id, ok := compiled.LookupSymbol("protected_dataset")
+	if !ok {
+		t.Fatal("compiled program does not contain protected_dataset")
+	}
+	allocations := testing.AllocsPerRun(100, func() {
+		materializedSymbol = compiled.Symbol(id)
+	})
+	if allocations != 0 {
+		t.Fatalf("Symbol allocations = %v, want 0", allocations)
+	}
+}
+
 func TestProgramValidateRejectsCorruptShape(t *testing.T) {
 	tests := []struct {
 		name string
@@ -68,7 +84,7 @@ func TestProgramValidateRejectsCorruptShape(t *testing.T) {
 		{"short resolution", func(p *program.Program) { p.ClauseResolutionOutcomeIDs = p.ClauseResolutionOutcomeIDs[:7] }, "ClauseResolutionOutcomeIDs length"},
 		{"missing explanation", func(p *program.Program) { p.ClauseExplanationIDs[1] = 0 }, "ClauseExplanationIDs[1]"},
 		{"bad clause csr", func(p *program.Program) { p.RequirementClauseStarts[0] = 99 }, "clause range"},
-		{"bad symbol range", func(p *program.Program) { p.SymbolStarts[0] = uint32(len(p.SymbolBytes) + 1) }, "SymbolStarts[0]"},
+		{"bad symbol range", func(p *program.Program) { p.SymbolStarts[0] = uint32(len(p.SymbolText) + 1) }, "SymbolStarts[0]"},
 		{"bad precedence", func(p *program.Program) { p.OutcomePrecedence[0] = 4 }, "duplicate precedence"},
 	}
 

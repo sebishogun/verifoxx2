@@ -2,8 +2,10 @@
 
 Verifoxx is a compact Go implementation of the semantic decision exercise in
 `Requirements.md`. The requirement prose is represented as a generic JSON
-expression AST, compiled once into an immutable numeric program, and evaluated
-over a columnar batch of requests and evidence. Each request resolves to
+expression AST, compiled into an immutable numeric program, and evaluated over
+a columnar batch of requests and evidence. The CLI supports one-shot files or a
+long-running framed stream that compiles once and reuses session storage. Each
+request resolves to
 `Approve`, `Reject`, `Revise`, or `Escalate` with bounded provenance and
 remediation data.
 
@@ -104,6 +106,33 @@ temporary file in the destination directory, set to mode `0644`, and renamed
 over the destination. The directory is not synced, so this is atomic
 replacement rather than a claim of crash durability.
 
+For repeated packs under one policy, use framed mode:
+
+```bash
+./bin/verifoxx --stream --policy policies/policy.json
+```
+
+Stdin and stdout then contain binary-framed JSON only. Every message is a
+four-byte unsigned big-endian payload length followed by exactly that many JSON
+bytes. An input payload is:
+
+```json
+{"requests":[...],"evidence":[...]}
+```
+
+Successful and rejected frames return ordered response envelopes:
+
+```json
+{"ok":true,"output":{"schema_version":1,"policy_name":"...","policy_version":"...","results":[...]}}
+{"ok":false,"error":{"code":"invalid_input","message":"..."}}
+```
+
+Complete invalid JSON or input receives an error frame and processing
+continues. A partial header, partial payload, oversized frame, internal failure,
+or output failure terminates the stream. Input payloads are limited to 16 MiB,
+responses to 64 MiB, and error messages to 1,024 bytes. Explicit `--requests`,
+`--evidence`, and `--output` flags are incompatible with `--stream`.
+
 Unknown flags and positional arguments return exit code 2. Decode, compile,
 batch-build, evaluation, materialization, and output failures return exit code
 1 with the failing boundary and path on stderr.
@@ -115,13 +144,14 @@ The CLI has one production execution path:
 ```text
 strict JSON -> source AST -> compiler -> immutable Program
 strict JSON -> requests/evidence -> columnar Batch + CSR references
-Program + Batch + reusable Context -> numeric result Batch
+Program + private reusable Session -> Batch + Context + numeric result Batch
 numeric results + source IDs -> OutputPack -> JSON
 ```
 
 1. Policy JSON is size-limited, strictly decoded, and validated.
-2. The compiler interns strings once and lowers expressions in deterministic
-   postorder to typed opcodes, numeric IDs, and CSR ranges.
+2. The compiler interns strings into one immutable text slab and lowers
+   expressions in deterministic postorder to typed opcodes, numeric IDs, and
+   CSR ranges.
 3. Request and evidence strings are resolved once while building
    structure-of-arrays columns. Missing evidence references become explicit
    sentinel edges.
@@ -130,9 +160,10 @@ numeric results + source IDs -> OutputPack -> JSON
 5. Human-readable strings and JSON objects are reconstructed only after the
    warm evaluation stage.
 
-The warm evaluator performs no per-row allocation and contains no runtime
-string comparison or hash lookup. See `docs/architecture.md` for layouts and
-ownership and `docs/performance.md` for reproducible measurements.
+The warm evaluator and warmed batch builder perform no per-row allocation and
+contain no runtime string allocation or hash lookup. See `docs/architecture.md`
+for layouts and ownership and `docs/performance.md` for reproducible
+measurements.
 
 ## Policy Format
 
@@ -270,11 +301,14 @@ ranges, and precedence.
 ## Performance
 
 On an AMD Ryzen AI MAX+ 395, Linux amd64, Go 1.27.0, six single-threaded
-500 ms samples measured warm evaluation at `542.8-563.9 ns/op` for one row and
-`144.670-151.201 us/op` for 1,024 rows. Every measured warm batch size (1, 5,
-64, and 1,024 rows) reported `0 B/op` and `0 allocs/op`. These are local
-microbenchmark ranges, not service-throughput claims. Commands, all lifecycle
-stages, allocations, and memory formulas are in `docs/performance.md`.
+500 ms samples measured the complete steady framed five-request path at
+`18.708-19.727 us/op`, `9,336 B/op`, and `35 allocs/op`. A fresh one-shot call
+measured `94.506-104.288 us/op` and 504 allocations, down from the recorded 516.
+Warm evaluation measured `552.6-594.8 ns/op` for one row and
+`146.511-149.817 us/op` for 1,024 rows; every warm evaluator size reported
+`0 B/op` and `0 allocs/op`. These are local microbenchmark ranges, not service
+throughput claims. Commands, lifecycle stages, and exclusions are in
+`docs/performance.md`.
 
 ## Repository Layout
 
@@ -286,8 +320,10 @@ internal/compile/             deterministic lowering and string interning
 internal/program/             immutable numeric program and validator
 internal/input/               request and evidence DTOs
 internal/eval/                columnar builder, bitplanes, scalar evaluator
+internal/engine/              immutable engine and private reusable sessions
 internal/result/              caller-owned numeric result columns
 internal/adapters/jsonio/     strict decoders and cold JSON materialization
+internal/adapters/framed/     bounded length-prefixed JSON transport
 internal/conformance/         supplied and edge golden checks
 policies/                     shipped source policy
 fixtures/                     supplied and edge request/evidence packs

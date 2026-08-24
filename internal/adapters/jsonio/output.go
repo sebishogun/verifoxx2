@@ -103,73 +103,85 @@ func MaterializeInto(dst *OutputPack, compiled program.Program, batch eval.Batch
 		return err
 	}
 
-	pack := OutputPack{
-		SchemaVersion: 1,
-		PolicyName:    compiled.Name,
-		PolicyVersion: compiled.Version,
-		Results:       make([]EvaluationResult, rows),
-	}
+	dst.SchemaVersion = 1
+	dst.PolicyName = compiled.Name
+	dst.PolicyVersion = compiled.Version
+	dst.Results = resizeResults(dst.Results, rows)
 	for row := 0; row < rows; row++ {
-		materialized, err := materializeRow(compiled, batch, numeric, requests, evidence, row)
-		if err != nil {
+		if err := materializeRowInto(&dst.Results[row], compiled, batch, numeric, requests, evidence, row); err != nil {
 			return fmt.Errorf("materialize row %d request %q: %w", row, requests[row].ID, err)
 		}
-		pack.Results[row] = materialized
 	}
-	*dst = pack
 	return nil
 }
 
-func materializeRow(compiled program.Program, batch eval.Batch, numeric result.Batch, requests []input.Request, evidence []input.Evidence, row int) (EvaluationResult, error) {
+func resizeResults(results []EvaluationResult, rows int) []EvaluationResult {
+	if rows == 0 && results == nil {
+		return []EvaluationResult{}
+	}
+	if cap(results) < rows {
+		return make([]EvaluationResult, rows)
+	}
+	return results[:rows]
+}
+
+func materializeRowInto(dst *EvaluationResult, compiled program.Program, batch eval.Batch, numeric result.Batch, requests []input.Request, evidence []input.Evidence, row int) error {
 	outcome := numeric.OutcomeIDs[row]
 	decision, ok := outcomeName(outcome)
 	if !ok {
-		return EvaluationResult{}, fmt.Errorf("invalid outcome ID %d", outcome)
+		return fmt.Errorf("invalid outcome ID %d", outcome)
 	}
-	resultValue := EvaluationResult{
+	requirementsApplied := resetSlice(dst.RequirementsApplied)
+	evidenceUsed := resetSlice(dst.EvidenceUsed)
+	missingOrConflicting := resetSlice(dst.MissingOrConflictingEvidence)
+	assumptions := resetSlice(dst.Assumptions)
+	unresolved := resetSlice(dst.UnresolvedUncertainty)
+	remediations := resetSlice(dst.Remediation)
+	*dst = EvaluationResult{
 		RequestID:                    requests[row].ID,
 		Decision:                     decision,
-		RequirementsApplied:          make([]string, 0, int(numeric.RequirementOffsets[row+1]-numeric.RequirementOffsets[row])),
-		EvidenceUsed:                 make([]string, 0, int(numeric.EvidenceOffsets[row+1]-numeric.EvidenceOffsets[row])),
-		MissingOrConflictingEvidence: []string{},
-		Assumptions:                  []string{resultAssumption},
-		UnresolvedUncertainty:        []string{},
+		RequirementsApplied:          ensureSliceCapacity(requirementsApplied, int(numeric.RequirementOffsets[row+1]-numeric.RequirementOffsets[row])),
+		EvidenceUsed:                 ensureSliceCapacity(evidenceUsed, int(numeric.EvidenceOffsets[row+1]-numeric.EvidenceOffsets[row])),
+		MissingOrConflictingEvidence: ensureNonNil(missingOrConflicting),
+		Assumptions:                  append(ensureSliceCapacity(assumptions, 1), resultAssumption),
+		UnresolvedUncertainty:        ensureNonNil(unresolved),
+		Remediation:                  remediations,
 	}
 	for i := numeric.RequirementOffsets[row]; i < numeric.RequirementOffsets[row+1]; i++ {
 		id := numeric.RequirementIDs[i]
 		if !id.Valid() || int(id) > len(compiled.RequirementSymbols) {
-			return EvaluationResult{}, fmt.Errorf("invalid requirement ID %d", id)
+			return fmt.Errorf("invalid requirement ID %d", id)
 		}
-		resultValue.RequirementsApplied = append(resultValue.RequirementsApplied, compiled.Symbol(compiled.RequirementSymbols[id-1]))
+		dst.RequirementsApplied = append(dst.RequirementsApplied, compiled.Symbol(compiled.RequirementSymbols[id-1]))
 	}
 	for i := numeric.EvidenceOffsets[row]; i < numeric.EvidenceOffsets[row+1]; i++ {
 		ref := numeric.EvidenceRefs[i]
 		if ref == 0 || int(ref) > len(evidence) {
-			return EvaluationResult{}, fmt.Errorf("invalid evidence ref %d", ref)
+			return fmt.Errorf("invalid evidence ref %d", ref)
 		}
-		resultValue.EvidenceUsed = append(resultValue.EvidenceUsed, evidence[ref-1].ID)
+		dst.EvidenceUsed = append(dst.EvidenceUsed, evidence[ref-1].ID)
 	}
 
 	rationale, detail, uncertainty, err := materializeDriver(compiled, batch, numeric, requests, row)
 	if err != nil {
-		return EvaluationResult{}, err
+		return err
 	}
-	resultValue.Rationale = rationale
+	dst.Rationale = rationale
 	if detail != "" {
-		resultValue.MissingOrConflictingEvidence = append(resultValue.MissingOrConflictingEvidence, detail)
+		dst.MissingOrConflictingEvidence = append(dst.MissingOrConflictingEvidence, detail)
 	}
 	if uncertainty != "" {
-		resultValue.UnresolvedUncertainty = append(resultValue.UnresolvedUncertainty, uncertainty)
+		dst.UnresolvedUncertainty = append(dst.UnresolvedUncertainty, uncertainty)
 	}
 
 	remediationCount := int(numeric.RemediationOffsets[row+1] - numeric.RemediationOffsets[row])
 	if remediationCount != 0 {
-		resultValue.Remediation = make([]Remediation, 0, remediationCount)
+		dst.Remediation = ensureSliceCapacity(dst.Remediation, remediationCount)
 	}
 	for i := numeric.RemediationOffsets[row]; i < numeric.RemediationOffsets[row+1]; i++ {
 		id := numeric.RemediationIDs[i]
 		if !id.Valid() || int(id) > len(compiled.Remediations) {
-			return EvaluationResult{}, fmt.Errorf("invalid remediation ID %d", id)
+			return fmt.Errorf("invalid remediation ID %d", id)
 		}
 		spec := compiled.Remediations[id-1]
 		item := Remediation{}
@@ -183,11 +195,30 @@ func materializeRow(compiled program.Program, batch eval.Batch, numeric result.B
 			item.Field = schema.FieldName(spec.Field)
 			item.Value = compiled.Symbol(spec.Value)
 		default:
-			return EvaluationResult{}, fmt.Errorf("invalid remediation action %d", spec.Action)
+			return fmt.Errorf("invalid remediation action %d", spec.Action)
 		}
-		resultValue.Remediation = append(resultValue.Remediation, item)
+		dst.Remediation = append(dst.Remediation, item)
 	}
-	return resultValue, nil
+	return nil
+}
+
+func resetSlice[T any](items []T) []T {
+	clear(items)
+	return items[:0]
+}
+
+func ensureSliceCapacity[T any](items []T, capacity int) []T {
+	if cap(items) < capacity {
+		return make([]T, 0, capacity)
+	}
+	return items
+}
+
+func ensureNonNil[T any](items []T) []T {
+	if items == nil {
+		return []T{}
+	}
+	return items
 }
 
 func materializeDriver(compiled program.Program, batch eval.Batch, numeric result.Batch, requests []input.Request, row int) (rationale, detail, uncertainty string, err error) {

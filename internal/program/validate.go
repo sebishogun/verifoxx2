@@ -136,13 +136,13 @@ func (p Program) validateSymbols() error {
 		start := uint64(p.SymbolStarts[i])
 		length := uint64(p.SymbolLengths[i])
 		end := start + length
-		if start != expectedStart || end < start || end > uint64(len(p.SymbolBytes)) || length == 0 {
-			return fmt.Errorf("SymbolStarts[%d]/SymbolLengths[%d] range (%d,%d) is invalid for SymbolBytes length %d", i, i, start, length, len(p.SymbolBytes))
+		if start != expectedStart || end < start || end > uint64(len(p.SymbolText)) || length == 0 {
+			return fmt.Errorf("SymbolStarts[%d]/SymbolLengths[%d] range (%d,%d) is invalid for SymbolText length %d", i, i, start, length, len(p.SymbolText))
 		}
 		expectedStart = end
 	}
-	if expectedStart != uint64(len(p.SymbolBytes)) {
-		return fmt.Errorf("symbol ranges cover %d bytes, want %d", expectedStart, len(p.SymbolBytes))
+	if expectedStart != uint64(len(p.SymbolText)) {
+		return fmt.Errorf("symbol ranges cover %d bytes, want %d", expectedStart, len(p.SymbolText))
 	}
 	return nil
 }

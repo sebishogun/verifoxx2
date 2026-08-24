@@ -6,17 +6,10 @@ func (p Program) LookupSymbol(value string) (schema.SymbolID, bool) {
 	for i := range p.SymbolStarts {
 		start := int(p.SymbolStarts[i])
 		length := int(p.SymbolLengths[i])
-		if length != len(value) || start < 0 || start+length > len(p.SymbolBytes) {
+		if length != len(value) || start < 0 || start+length > len(p.SymbolText) {
 			continue
 		}
-		match := true
-		for j := 0; j < length; j++ {
-			if p.SymbolBytes[start+j] != value[j] {
-				match = false
-				break
-			}
-		}
-		if match {
+		if p.SymbolText[start:start+length] == value {
 			return schema.SymbolID(i + 1), true
 		}
 	}
@@ -30,8 +23,8 @@ func (p Program) Symbol(id schema.SymbolID) string {
 	i := int(id) - 1
 	start := int(p.SymbolStarts[i])
 	end := start + int(p.SymbolLengths[i])
-	if start < 0 || end < start || end > len(p.SymbolBytes) {
+	if start < 0 || end < start || end > len(p.SymbolText) {
 		return ""
 	}
-	return string(p.SymbolBytes[start:end])
+	return p.SymbolText[start:end]
 }

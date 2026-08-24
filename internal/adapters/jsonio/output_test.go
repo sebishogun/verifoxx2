@@ -18,7 +18,7 @@ import (
 	"github.com/sebishogun/verifoxx2/internal/schema"
 )
 
-func materializeFixture(t *testing.T, requestsPath, evidencePath string) OutputPack {
+func materializeInputs(t *testing.T, requestsPath, evidencePath string) (program.Program, eval.Batch, result.Batch, []input.Request, []input.Evidence) {
 	t.Helper()
 	source, err := LoadPolicy("../../../policies/policy.json")
 	if err != nil {
@@ -47,11 +47,42 @@ func materializeFixture(t *testing.T, requestsPath, evidencePath string) OutputP
 	if err := eval.NewEvaluator(&compiled).EvaluateInto(&context, batch, &numeric); err != nil {
 		t.Fatal(err)
 	}
+	return compiled, batch, numeric, requests, evidence
+}
+
+func materializeFixture(t *testing.T, requestsPath, evidencePath string) OutputPack {
+	t.Helper()
+	compiled, batch, numeric, requests, evidence := materializeInputs(t, requestsPath, evidencePath)
 	var pack OutputPack
 	if err := MaterializeInto(&pack, compiled, batch, numeric, requests, evidence); err != nil {
 		t.Fatalf("MaterializeInto() error = %v", err)
 	}
 	return pack
+}
+
+func TestMaterializeIntoReusesResultStorage(t *testing.T) {
+	compiled, batch, numeric, requests, evidence := materializeInputs(t, "../../../fixtures/requests.json", "../../../fixtures/evidence.json")
+	var pack OutputPack
+	if err := MaterializeInto(&pack, compiled, batch, numeric, requests, evidence); err != nil {
+		t.Fatal(err)
+	}
+	resultsStorage := &pack.Results[0]
+	requirementStorage := &pack.Results[0].RequirementsApplied[0]
+	pack.Results[0].MissingOrConflictingEvidence = append(pack.Results[0].MissingOrConflictingEvidence, "poison")
+	pack.Results[0].UnresolvedUncertainty = append(pack.Results[0].UnresolvedUncertainty, "poison")
+
+	if err := MaterializeInto(&pack, compiled, batch, numeric, requests, evidence); err != nil {
+		t.Fatal(err)
+	}
+	if &pack.Results[0] != resultsStorage {
+		t.Fatal("MaterializeInto replaced reusable result storage")
+	}
+	if &pack.Results[0].RequirementsApplied[0] != requirementStorage {
+		t.Fatal("MaterializeInto replaced reusable nested storage")
+	}
+	if len(pack.Results[0].MissingOrConflictingEvidence) != 0 || len(pack.Results[0].UnresolvedUncertainty) != 0 {
+		t.Fatalf("reused result retained poison: %+v", pack.Results[0])
+	}
 }
 
 func TestMaterializeAndEncodeMatchTrackedGoldens(t *testing.T) {

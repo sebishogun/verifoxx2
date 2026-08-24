@@ -292,3 +292,23 @@ func BenchmarkEvaluateCLISuppliedPack(b *testing.B) {
 		}
 	}
 }
+
+func TestRunOneShotAllocationBudget(t *testing.T) {
+	if raceEnabled {
+		t.Skip("race instrumentation changes boundary allocation counts")
+	}
+	args := []string{
+		"--policy", "../../policies/policy.json",
+		"--requests", "../../fixtures/requests.json",
+		"--evidence", "../../fixtures/evidence.json",
+		"--output", "-",
+	}
+	allocations := testing.AllocsPerRun(20, func() {
+		if code := run(args, io.Discard, io.Discard); code != 0 {
+			panic(code)
+		}
+	})
+	if allocations > 516 {
+		t.Fatalf("one-shot allocations = %v, want no regression from 516", allocations)
+	}
+}

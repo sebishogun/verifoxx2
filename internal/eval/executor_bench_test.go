@@ -142,7 +142,7 @@ func BenchmarkBuildBatchRows1024(b *testing.B) {
 	benchmarkOutcome = uint64(batch.Rows)
 }
 
-func BenchmarkBuildBatchColdRows1024(b *testing.B) {
+func BenchmarkBuildBatchColdDestinationRows1024(b *testing.B) {
 	source, err := jsonio.LoadPolicy("../../policies/policy.json")
 	if err != nil {
 		b.Fatal(err)

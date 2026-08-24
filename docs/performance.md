@@ -25,7 +25,7 @@ The final command measured every stage sequentially by package:
 timeout 120s env GOMAXPROCS=1 ./scripts/go.sh test \
   -p 1 \
   -run '^$' \
-  -bench 'Benchmark(Evaluate|Compile|BuildBatch|Materialize)' \
+  -bench 'Benchmark(Evaluate|Compile|BuildBatch|Materialize|Session|FirstFrame|SteadyFrame)' \
   -benchmem -benchtime=500ms -count=6 -timeout 90s \
   ./cmd/verifoxx ./internal/...
 ```
@@ -34,7 +34,8 @@ The allocation regression is independent of timing:
 
 ```bash
 timeout 60s ./scripts/go.sh test -count=1 -timeout 60s \
-  ./internal/eval -run '^TestEvaluateIntoWarmPathAllocation$' -v
+  ./cmd/verifoxx ./internal/eval ./internal/program \
+  -run 'Test.*Allocation' -v
 ```
 
 ## Results
@@ -47,38 +48,57 @@ storage.
 
 | Rows | Time range | B/op | allocs/op |
 | ---: | ---: | ---: | ---: |
-| 1 | 542.8-563.9 ns | 0 | 0 |
-| 5 | 1.113-1.133 us | 0 | 0 |
-| 64 | 9.459-9.696 us | 0 | 0 |
-| 1,024 | 144.670-151.201 us | 0 | 0 |
+| 1 | 552.6-594.8 ns | 0 | 0 |
+| 5 | 1.113-1.200 us | 0 | 0 |
+| 64 | 9.417-9.721 us | 0 | 0 |
+| 1,024 | 146.511-149.817 us | 0 | 0 |
 
 Zero allocation is the contract for a correctly pre-sized warm call, not an
 incidental sample result. `EvaluateInto` checks all caller-owned capacities and
 returns before mutation when they are insufficient.
 
-### Lifecycle Stages
+### Reusable And Framed Stages
 
 | Benchmark | Scope | Time range | B/op | allocs/op |
 | --- | --- | ---: | ---: | ---: |
-| `CompilePolicy` | Validated source AST to immutable program | 13.996-14.760 us | 21,241 | 180 |
-| `CompilePolicyJSON` | In-memory policy JSON decode, validate, compile | 49.681-51.143 us | 97,129 | 322 |
-| `BuildBatchRows1024` | Build 1,024 rows into a warmed destination | 259.237-268.559 us | 54,608 | 5 |
-| `BuildBatchColdRows1024` | Build 1,024 rows into a zero destination | 262.098-271.553 us | 100,328 | 22 |
-| `MaterializeSuppliedPack` | Five numeric rows to output DTOs, no JSON encoding | 2.422-2.522 us | 2,500 | 47 |
-| `EvaluateCLISuppliedPack` | Read, decode, compile, build, evaluate, materialize, encode five rows | 87.657-93.044 us | 126,178-126,180 | 516 |
+| `SessionSuppliedPack` | Warm build, evaluate, and materialize five rows | 5.110-5.434 us | 352 | 5 |
+| `SteadyFrameSuppliedPack` | Strict decode through compact framed response | 18.708-19.727 us | 9,336 | 35 |
+| `FirstFrameSuppliedPack` | New session and all first-use storage growth | 22.755-23.925 us | 21,698 | 117 |
+
+The framed benchmarks exclude policy startup and input length-prefix reading;
+they include request/evidence JSON decoding, batch build, evaluation,
+materialization, response JSON encoding, and writing the response length prefix
+plus payload to `io.Discard`. The steady benchmark warms every reusable store
+before timing. Its allocation budget is fewer than 100 allocations per frame;
+the regression test currently measures 35.
+
+### Cold And Boundary Stages
+
+| Benchmark | Scope | Time range | B/op | allocs/op |
+| --- | --- | ---: | ---: | ---: |
+| `CompilePolicy` | Validated source AST to immutable program | 15.252-16.809 us | 21,241 | 180 |
+| `CompilePolicyJSON` | In-memory policy JSON decode, validate, compile | 52.534-55.120 us | 97,129 | 322 |
+| `BuildBatchRows1024` | Warm builder and destination for 1,024 rows | 239.775-243.228 us | 0 | 0 |
+| `BuildBatchColdDestinationRows1024` | Warm builder into a zero destination | 247.321-252.824 us | 45,764-45,766 | 17 |
+| `MaterializeSuppliedPack` | Warm five-row output materialization | 1.514-1.731 us | 352 | 5 |
+| `MaterializeColdSuppliedPack` | Five rows into a zero output pack | 2.256-2.339 us | 1,952 | 28 |
+| `EvaluateCLISuppliedPack` | Fresh complete five-row one-shot call | 94.506-104.288 us | 127,092 | 504 |
 
 `CompilePolicyJSON` reads the policy file into a byte slice before the timer;
 the measured loop starts at strict JSON decoding. The warmed batch benchmark
-reuses all destination columns but still allocates its temporary ID maps. The
-cold batch benchmark includes destination-column allocation. The complete CLI
-benchmark calls `run` and reads the three source files on every iteration,
-writes JSON to `io.Discard`, and excludes operating-system process startup and
-file-output rename.
+reuses destination columns and builder-owned ID maps. The cold-destination
+benchmark includes destination-column allocation but retains warmed builder
+maps across iterations. The complete CLI benchmark calls `run` and reads the
+three source files on every iteration, writes JSON to `io.Discard`, and excludes
+operating-system process startup and file-output rename. Its allocation count
+fell from the pre-change baseline of 516 to 504; a fresh process still decodes
+and compiles its policy.
 
-Materialization is intentionally allocation-bearing: it reconstructs source
-IDs, explanations, evidence details, remediations, and JSON-facing slices after
-numeric evaluation. Encoding and file replacement are output-boundary work,
-not part of the warm evaluator.
+Materialization reconstructs source IDs, explanations, evidence details,
+remediations, and JSON-facing slices after numeric evaluation. Reused slices and
+zero-copy views into the immutable symbol text slab leave five allocations for
+the supplied pack's dynamically composed evidence details. Encoding and file
+replacement are output-boundary work, not part of the warm evaluator.
 
 ## Data Size Formulas
 
@@ -149,17 +169,19 @@ evaluator resets lengths and content but never grows them.
 
 ## Runtime Shape
 
-- `Program` is immutable and shared.
+- `Engine` owns an immutable shared `Program` whose symbols occupy one text slab.
+- Each session owns reusable builder maps, batch, context, results, and output.
 - `Batch` is field-major and evidence-column-major; request-to-evidence links
   are CSR ranges.
 - `Context` is instruction-major bitplane storage private to one worker.
 - `result.Batch` is caller-owned numeric storage private to one worker.
-- Cold builders use maps for ID validation and lookup. Warm evaluation uses no
-  map, reflection, formatting, string comparison, callback dispatch, or pool.
+- Builders use private reusable maps for ID validation and lookup. Warm
+  evaluation uses no map, reflection, formatting, string comparison, callback
+  dispatch, or pool.
 
 The layouts leave room for a future SIMD kernel and row sharding, but the
 measurements in this document are for the scalar, single-threaded
-implementation only.
+implementation only. Framed mode is sequential and ordered.
 
 ## Exclusions
 

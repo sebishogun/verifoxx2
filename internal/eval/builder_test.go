@@ -1,6 +1,7 @@
 package eval_test
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -112,6 +113,33 @@ func TestBuilderFullyOverwritesReusedBatch(t *testing.T) {
 	}
 	if batch.EvidenceRefs[0] != 1 || batch.Present[0]&1 == 0 || batch.Present[0]&^uint64(1) != 0 {
 		t.Fatalf("reused batch retained poison: refs=%v present=%064b", batch.EvidenceRefs, batch.Present[0])
+	}
+}
+
+func TestBuilderWarmPathAllocation(t *testing.T) {
+	compiled := builderProgram(t)
+	builder := eval.NewBuilder(&compiled, eval.DefaultLimits())
+	requests := make([]input.Request, 1024)
+	for i := range requests {
+		requests[i] = input.Request{
+			ID: fmt.Sprintf("REQ-%d", i), Requester: "partner", TrustLevel: "external",
+			Action: "aggregate_analysis", OutputKind: "aggregate_counts", Dataset: "protected_dataset",
+			Environment: "local_approved_env", UsageLimit: "standard", EvidenceIDs: []string{"E1"},
+		}
+	}
+	evidence := []input.Evidence{{ID: "E1", Type: "approval_record", Status: "valid"}}
+
+	var batch eval.Batch
+	if err := builder.BuildInto(&batch, requests, evidence); err != nil {
+		t.Fatal(err)
+	}
+	allocations := testing.AllocsPerRun(100, func() {
+		if err := builder.BuildInto(&batch, requests, evidence); err != nil {
+			panic(err)
+		}
+	})
+	if allocations != 0 {
+		t.Fatalf("warm BuildInto allocations = %v, want 0", allocations)
 	}
 }
 

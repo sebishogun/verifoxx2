@@ -2,11 +2,12 @@
 
 ## Scope
 
-Verifoxx has one production execution path: strict source documents are
-compiled and converted to numeric, contiguous data before evaluation. The
-runtime is scalar and single-process. SIMD, parallel scheduling, persistence,
-network services, and interactive debugging are extension points rather than
-implemented features.
+Verifoxx has one evaluation path: strict source documents are compiled and
+converted to numeric, contiguous data before evaluation. One-shot file mode and
+the framed stdin/stdout adapter both use the same immutable engine and private
+session. The runtime is scalar and single-process. SIMD, parallel scheduling,
+persistence, network services, and interactive debugging are extension points
+rather than implemented features.
 
 ## Data Flow
 
@@ -29,6 +30,15 @@ Program + Batch + Context + result.Batch
   -> jsonio.MaterializeInto
   -> OutputPack
   -> EncodeResults or atomic WriteResults
+
+framed mode startup
+  -> compile once -> immutable Engine
+  -> one private Session
+
+each frame
+  -> bounded length prefix + strict JSON Input
+  -> Session reuses Builder + Batch + Context + result.Batch + OutputPack
+  -> compact success/error JSON + bounded length prefix
 ```
 
 Decode, validation, compilation, batch construction, and materialization are
@@ -45,9 +55,11 @@ cold stages. The warm stage begins after `Context.Ensure` and
 | `internal/compile` | Deterministic postorder lowering and string interning | `ast`, `program`, `schema` |
 | `internal/input` | Request and evidence transport records | none |
 | `internal/eval` | Batch builder, bitplanes, scalar kernels, row resolution | `input`, `program`, `result`, `schema` |
+| `internal/engine` | Immutable program lifetime and private reusable sessions | `eval`, `jsonio`, `program`, `result` |
 | `internal/result` | Caller-owned numeric output columns and capacity contract | `schema` |
 | `internal/adapters/jsonio` | Strict JSON boundaries and cold text materialization | all data packages |
-| `cmd/verifoxx` | Compile-once CLI orchestration | adapters, compiler, evaluator, result |
+| `internal/adapters/framed` | Bounded length-prefixed JSON transport | `input`, `jsonio` |
+| `cmd/verifoxx` | One-shot and framed CLI orchestration | adapters, engine |
 
 The source AST never enters the evaluator. Output DTOs never enter the
 evaluator. This keeps parsing strings and presentation allocations outside the
@@ -99,9 +111,9 @@ explanation tables are indexed as:
 clauseIndex * ReasonCount + reasonIndex
 ```
 
-All strings needed by the runtime are interned into one `SymbolBytes` slab with
-parallel start and length arrays. Compile-time maps disappear when the interner
-freezes.
+All strings needed by the runtime are interned into one immutable `SymbolText`
+slab with parallel start and length arrays. Substrings are zero-copy views;
+compile-time maps disappear when the interner freezes.
 `Program.Validate` is the publication gate and checks aligned columns, typed ID
 bounds, symbol coverage, CSR ranges, topological order, clause ownership,
 resolution tables, remediation payloads, and precedence.
@@ -140,8 +152,7 @@ values are one-based indexes into the evidence columns. Source IDs remain in
 the cold input DTOs so materialization can report the exact missing ID.
 
 `BuildInto` validates all IDs, limits, and total edge count before resizing or
-mutating the destination. Its temporary maps exist only during batch
-construction.
+mutating the destination. Each builder owns reusable validation and lookup maps.
 
 ## Truth And Evidence Evaluation
 
@@ -179,15 +190,27 @@ pooling.
 | --- | --- | --- |
 | `ast.Policy` | loader/caller | Cold; discard after successful compilation |
 | `program.Program` | application | Long-lived, immutable after validation |
+| `engine.Engine` | application | Long-lived and immutable; shared by sessions |
+| `engine.Session` | one worker | Reuses builder, batch, context, numeric results, and output |
 | `input.Request` / `input.Evidence` | loader/caller | Retained through materialization for source IDs/text |
 | `eval.Batch` | caller | Rebuild or reuse between input packs; do not mutate during evaluation |
 | `eval.Context` | one worker | Reuse after `Ensure`; never share concurrently |
 | `result.Batch` | one worker | Caller sizes it, evaluator resets/fills it; never share concurrently |
-| `jsonio.OutputPack` | output boundary | Cold, allocation-bearing, disposable |
+| `jsonio.OutputPack` | session/output boundary | Reused by a session; overwritten by its next evaluation |
 
-Independent contexts and result batches can evaluate the same immutable
-program and batch concurrently. No `sync.Pool` is used; ownership stays visible
-at the call site.
+Independent sessions can evaluate through the same immutable engine
+concurrently. A `Builder`, `Context`, result batch, output pack, and framed codec
+remain private to one sequential session. No `sync.Pool` is used; ownership
+stays visible at the call site.
+
+## Framed Transport
+
+Stream messages use a four-byte unsigned big-endian length followed by an exact
+JSON payload. Input is capped at 16 MiB before the payload buffer grows; output
+is capped at 64 MiB while encoding. A clean EOF between headers is normal. A
+partial or oversized frame is fatal because safe resynchronization is
+impossible. Complete invalid input receives an ordered bounded error response,
+then the session continues with cleared reusable state.
 
 ## Capacity Contract
 

@@ -19,13 +19,22 @@ func DefaultLimits() Limits {
 	return Limits{MaxRows: 1 << 20, MaxEvidence: 1 << 20, MaxEdges: 1 << 22}
 }
 
+// Builder owns reusable validation maps. Copies share that scratch storage, so
+// one Builder belongs to one sequential session.
 type Builder struct {
-	program *program.Program
-	limits  Limits
+	program      *program.Program
+	limits       Limits
+	requestIDs   map[string]struct{}
+	evidenceByID map[string]uint32
 }
 
 func NewBuilder(compiled *program.Program, limits Limits) Builder {
-	return Builder{program: compiled, limits: limits}
+	return Builder{
+		program:      compiled,
+		limits:       limits,
+		requestIDs:   make(map[string]struct{}),
+		evidenceByID: make(map[string]uint32),
+	}
 }
 
 func (builder Builder) BuildInto(dst *Batch, requests []input.Request, evidence []input.Evidence) error {
@@ -42,17 +51,18 @@ func (builder Builder) BuildInto(dst *Batch, requests []input.Request, evidence 
 		return fmt.Errorf("evidence record count %d exceeds limit %d", len(evidence), builder.limits.MaxEvidence)
 	}
 
-	requestIDs := make(map[string]struct{}, len(requests))
+	clear(builder.requestIDs)
+	clear(builder.evidenceByID)
 	edgeCount := uint64(0)
 	for i := range requests {
 		id := requests[i].ID
 		if strings.TrimSpace(id) == "" || strings.TrimSpace(id) != id {
 			return fmt.Errorf("request %d has malformed or empty id %q", i, id)
 		}
-		if _, exists := requestIDs[id]; exists {
+		if _, exists := builder.requestIDs[id]; exists {
 			return fmt.Errorf("duplicate request id %q", id)
 		}
-		requestIDs[id] = struct{}{}
+		builder.requestIDs[id] = struct{}{}
 		edgeCount += uint64(len(requests[i].EvidenceIDs))
 		if edgeCount > uint64(builder.limits.MaxEdges) {
 			return fmt.Errorf("evidence edge count %d exceeds limit %d", edgeCount, builder.limits.MaxEdges)
@@ -64,16 +74,15 @@ func (builder Builder) BuildInto(dst *Batch, requests []input.Request, evidence 
 		}
 	}
 
-	evidenceByID := make(map[string]uint32, len(evidence))
 	for i := range evidence {
 		id := evidence[i].ID
 		if strings.TrimSpace(id) == "" || strings.TrimSpace(id) != id {
 			return fmt.Errorf("evidence %d has malformed or empty id %q", i, id)
 		}
-		if _, exists := evidenceByID[id]; exists {
+		if _, exists := builder.evidenceByID[id]; exists {
 			return fmt.Errorf("duplicate evidence id %q", id)
 		}
-		evidenceByID[id] = uint32(i + 1)
+		builder.evidenceByID[id] = uint32(i + 1)
 	}
 
 	rows := len(requests)
@@ -122,7 +131,7 @@ func (builder Builder) BuildInto(dst *Batch, requests []input.Request, evidence 
 	for row := range requests {
 		dst.EvidenceRefOffsets[row] = uint32(edge)
 		for _, ref := range requests[row].EvidenceIDs {
-			dst.EvidenceRefs[edge] = evidenceByID[ref]
+			dst.EvidenceRefs[edge] = builder.evidenceByID[ref]
 			edge++
 		}
 	}

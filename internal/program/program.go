@@ -69,7 +69,7 @@ type Program struct {
 	ExplanationSymbols []schema.SymbolID
 	OutcomePrecedence  []uint8
 
-	SymbolBytes   []byte
+	SymbolText    string
 	SymbolStarts  []uint32
 	SymbolLengths []uint32
 }
