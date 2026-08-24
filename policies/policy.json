@@ -6,36 +6,119 @@
       "id": "R1",
       "description": "External partners may request aggregate analytical outputs from the protected dataset only if no individual-level information is disclosed and a valid approval record exists before execution.",
       "non_negotiable": true,
+      "applicability": {
+        "op": "all",
+        "children": [
+          {"op": "equal", "field": "dataset", "value": "protected_dataset"},
+          {"op": "equal", "field": "trust_level", "value": "external"}
+        ]
+      },
       "clauses": [
         {
-          "id": "C1_DISCLOSURE_RESTRICTION",
-          "kind": "disallowed_action",
-          "disallowed_actions": ["row_level_export"],
-          "rejection_rationale": "The requested individual-record export violates R1's non-negotiable disclosure restriction."
+          "id": "R1_C1",
+          "assertion": {
+            "op": "all",
+            "children": [
+              {"op": "equal", "field": "action", "value": "aggregate_analysis"},
+              {"op": "equal", "field": "output_kind", "value": "aggregate_counts"}
+            ]
+          },
+          "resolution": {
+            "satisfied": "Approve",
+            "false": "Reject",
+            "missing": "Escalate",
+            "invalid": "Reject",
+            "stale": "Reject",
+            "unclear": "Escalate",
+            "unverifiable": "Reject",
+            "conflict": "Reject"
+          },
+          "explanations": {
+            "false": "The requested action or output would disclose individual-level information, which external partners may not receive.",
+            "missing": "The requested action or output is missing.",
+            "invalid": "The requested action or output is invalid.",
+            "stale": "The requested action or output is stale.",
+            "unclear": "The requested action or output is unclear.",
+            "unverifiable": "The requested action or output cannot be verified.",
+            "conflict": "The requested action or output conflicts."
+          }
         },
         {
-          "id": "C1_APPROVAL_RECORD",
-          "kind": "required_evidence",
-          "evidence_type": "approval_record",
-          "required_status": "valid",
-          "required_timing": "before_execution",
-          "required_timestamp_state": "current"
+          "id": "R1_C2",
+          "assertion": {
+            "op": "evidence_matches",
+            "evidence": {
+              "kind": "approval_record",
+              "status": "valid",
+              "timing": "before_execution",
+              "timestamp_state": "current",
+              "reviewer": "designated_reviewer"
+            }
+          },
+          "resolution": {
+            "satisfied": "Approve",
+            "false": "Escalate",
+            "missing": "Escalate",
+            "invalid": "Escalate",
+            "stale": "Escalate",
+            "unclear": "Escalate",
+            "unverifiable": "Escalate",
+            "conflict": "Escalate"
+          },
+          "explanations": {
+            "false": "The pre-execution approval record does not satisfy the policy.",
+            "missing": "A valid current pre-execution approval record from the designated reviewer is missing.",
+            "invalid": "The pre-execution approval record is invalid.",
+            "stale": "The pre-execution approval record is stale.",
+            "unclear": "The pre-execution approval record is unclear.",
+            "unverifiable": "The pre-execution approval record cannot be verified.",
+            "conflict": "The pre-execution approval records conflict."
+          }
         }
       ]
     },
     {
       "id": "R2",
-      "description": "Any processing involving protected data must run in the approved local execution environment. If the execution environment cannot be verified, the request must not be automatically approved.",
+      "description": "Any processing involving protected data must run in the approved local execution environment with a verified attestation. If the environment cannot be verified, the request must not be automatically approved.",
       "non_negotiable": true,
+      "applicability": {"op": "equal", "field": "dataset", "value": "protected_dataset"},
       "clauses": [
         {
-          "id": "C2_ENV_VERIFICATION",
-          "kind": "required_environment",
-          "required_env": "local_approved_env",
-          "evidence_type": "execution_environment_attestation",
-          "required_status": "verified",
-          "required_attestation_state": "valid",
-          "escalation_rationale": "The approved local execution environment cannot be verified because the required attestation is missing or unverified."
+          "id": "R2_C1",
+          "assertion": {
+            "op": "all",
+            "children": [
+              {"op": "equal", "field": "environment", "value": "local_approved_env"},
+              {
+                "op": "evidence_matches",
+                "evidence": {
+                  "kind": "execution_environment_attestation",
+                  "subject": "local_approved_env",
+                  "status": "verified",
+                  "attestation_state": "valid"
+                }
+              }
+            ]
+          },
+          "resolution": {
+            "satisfied": "Approve",
+            "false": "Escalate",
+            "missing": "Escalate",
+            "invalid": "Escalate",
+            "stale": "Escalate",
+            "unclear": "Escalate",
+            "unverifiable": "Escalate",
+            "conflict": "Escalate"
+          },
+          "explanations": {
+            "false": "The request would not run in the approved local execution environment.",
+            "missing": "The required execution environment attestation is missing.",
+            "invalid": "The execution environment attestation is invalid or unverifiable.",
+            "stale": "The execution environment attestation is stale.",
+            "unclear": "The execution environment attestation is unclear.",
+            "unverifiable": "The execution environment attestation cannot be verified.",
+            "conflict": "The execution environment attestations conflict."
+          }
         }
       ]
     },
@@ -43,21 +126,140 @@
       "id": "R3",
       "description": "Trusted internal teams may request a temporary increase above the standard usage limit, but only where a specific usage-adjustment approval exists. Disclosure restrictions and pre-execution approval conditions cannot be relaxed. If approval evidence is unclear, stale or conflicting, the case should be escalated rather than assumed safe.",
       "non_negotiable": false,
+      "applicability": {
+        "op": "all",
+        "children": [
+          {"op": "equal", "field": "dataset", "value": "protected_dataset"},
+          {"op": "equal", "field": "usage_limit", "value": "above_standard_limit"}
+        ]
+      },
       "clauses": [
         {
-          "id": "C3_USAGE_LIMIT_ADJUSTMENT",
-          "kind": "usage_limit_check",
-          "above_limit_value": "above_standard_limit",
-          "allowed_trust_level": "trusted_internal",
-          "evidence_type": "usage_limit_adjustment",
-          "required_status": "approved",
-          "required_scope": "trusted_internal_only",
-          "revision_rationale": "The above-standard usage request can be corrected by providing the required scoped usage-adjustment approval.",
-          "remediation": {
-            "action": "add_evidence",
-            "evidence_kind": "usage_limit_adjustment",
-            "description": "Provide a valid usage_limit_adjustment approval record scoped for trusted_internal_only."
+          "id": "R3_C1",
+          "assertion": {"op": "in", "field": "trust_level", "values": ["trusted_internal"]},
+          "resolution": {
+            "satisfied": "Approve",
+            "false": "Revise",
+            "missing": "Revise",
+            "invalid": "Revise",
+            "stale": "Revise",
+            "unclear": "Revise",
+            "unverifiable": "Revise",
+            "conflict": "Revise"
+          },
+          "explanations": {
+            "false": "Above-standard usage is reserved for trusted internal teams; the request must be lowered to the standard usage limit.",
+            "missing": "The requester trust level is missing; lower the request to the standard usage limit.",
+            "invalid": "The requester trust level is invalid; lower the request to the standard usage limit.",
+            "stale": "The requester trust level is stale; lower the request to the standard usage limit.",
+            "unclear": "The requester trust level is unclear; lower the request to the standard usage limit.",
+            "unverifiable": "The requester trust level cannot be verified; lower the request to the standard usage limit.",
+            "conflict": "The requester trust level conflicts; lower the request to the standard usage limit."
+          },
+          "remediations": [
+            {"action": "set_field", "field": "usage_limit", "value": "standard"}
+          ]
+        },
+        {
+          "id": "R3_C2",
+          "assertion": {
+            "op": "all",
+            "children": [
+              {"op": "equal", "field": "action", "value": "aggregate_analysis"},
+              {"op": "equal", "field": "output_kind", "value": "aggregate_counts"}
+            ]
+          },
+          "resolution": {
+            "satisfied": "Approve",
+            "false": "Reject",
+            "missing": "Escalate",
+            "invalid": "Reject",
+            "stale": "Reject",
+            "unclear": "Escalate",
+            "unverifiable": "Reject",
+            "conflict": "Reject"
+          },
+          "explanations": {
+            "false": "The requested action or output would disclose individual-level information, which cannot be relaxed even for trusted internal teams.",
+            "missing": "The requested action or output is missing.",
+            "invalid": "The requested action or output is invalid.",
+            "stale": "The requested action or output is stale.",
+            "unclear": "The requested action or output is unclear.",
+            "unverifiable": "The requested action or output cannot be verified.",
+            "conflict": "The requested action or output conflicts."
           }
+        },
+        {
+          "id": "R3_C3",
+          "assertion": {
+            "op": "evidence_matches",
+            "evidence": {
+              "kind": "approval_record",
+              "status": "valid",
+              "timing": "before_execution",
+              "timestamp_state": "current",
+              "reviewer": "designated_reviewer"
+            }
+          },
+          "resolution": {
+            "satisfied": "Approve",
+            "false": "Escalate",
+            "missing": "Escalate",
+            "invalid": "Escalate",
+            "stale": "Escalate",
+            "unclear": "Escalate",
+            "unverifiable": "Escalate",
+            "conflict": "Escalate"
+          },
+          "explanations": {
+            "false": "The pre-execution approval record does not satisfy the policy.",
+            "missing": "A valid current pre-execution approval record from the designated reviewer is missing.",
+            "invalid": "The pre-execution approval record is invalid.",
+            "stale": "The pre-execution approval record is stale.",
+            "unclear": "The pre-execution approval record is unclear.",
+            "unverifiable": "The pre-execution approval record cannot be verified.",
+            "conflict": "The pre-execution approval records conflict."
+          }
+        },
+        {
+          "id": "R3_C4",
+          "assertion": {
+            "op": "evidence_matches",
+            "evidence": {
+              "kind": "usage_limit_adjustment",
+              "status": "approved",
+              "timestamp_state": "current",
+              "reviewer": "designated_reviewer",
+              "scope": "trusted_internal_only",
+              "adjustment_type": "above_standard_limit"
+            }
+          },
+          "resolution": {
+            "satisfied": "Approve",
+            "false": "Revise",
+            "missing": "Revise",
+            "invalid": "Revise",
+            "stale": "Escalate",
+            "unclear": "Escalate",
+            "unverifiable": "Escalate",
+            "conflict": "Escalate"
+          },
+          "explanations": {
+            "false": "The usage-limit adjustment approval does not satisfy the policy.",
+            "missing": "The required usage-limit adjustment approval is missing.",
+            "invalid": "The usage-limit adjustment approval is invalid or does not match the required qualifiers.",
+            "stale": "The usage-limit adjustment approval is stale.",
+            "unclear": "The usage-limit adjustment approval is unclear.",
+            "unverifiable": "The usage-limit adjustment approval cannot be verified.",
+            "conflict": "The usage-limit adjustment approvals conflict."
+          },
+          "remediations": [
+            {
+              "action": "add_evidence",
+              "evidence_kind": "usage_limit_adjustment",
+              "description": "Provide a valid usage_limit_adjustment approval record scoped for trusted_internal_only."
+            }
+          ]
         }
       ]
     }

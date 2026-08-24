@@ -6,14 +6,14 @@
     {
       "request_id": "R1",
       "decision": "Approve",
-      "rationale": "The request satisfies all relevant requirements and supporting evidence.",
+      "rationale": "The request satisfies all applicable requirements and supporting evidence.",
       "requirements_applied": [
         "R1",
         "R2"
       ],
       "evidence_used": [
-        "E2",
-        "E1"
+        "E1",
+        "E2"
       ],
       "missing_or_conflicting_evidence": [],
       "assumptions": [
@@ -24,7 +24,7 @@
     {
       "request_id": "R2",
       "decision": "Reject",
-      "rationale": "The requested individual-record export violates R1's non-negotiable disclosure restriction.",
+      "rationale": "The requested action or output would disclose individual-level information, which external partners may not receive.",
       "requirements_applied": [
         "R1",
         "R2"
@@ -42,23 +42,23 @@
     {
       "request_id": "R3",
       "decision": "Revise",
-      "rationale": "The above-standard usage request can be corrected by providing the required scoped usage-adjustment approval.",
+      "rationale": "The required usage-limit adjustment approval is missing.",
       "requirements_applied": [
-        "R1",
         "R2",
         "R3"
       ],
       "evidence_used": [
+        "E1",
         "E2"
       ],
       "missing_or_conflicting_evidence": [
-        "E3 usage_limit_adjustment is missing from the request."
+        "Required usage_limit_adjustment evidence is missing."
       ],
       "assumptions": [
         "The supplied structured fields faithfully represent the underlying request and evidence records."
       ],
       "unresolved_uncertainty": [
-        "Whether a qualifying usage adjustment will be approved remains unresolved."
+        "Whether the required usage_limit_adjustment evidence exists remains unresolved."
       ],
       "remediation": [
         {
@@ -71,7 +71,7 @@
     {
       "request_id": "R4",
       "decision": "Escalate",
-      "rationale": "The approved local execution environment cannot be verified because the required attestation is missing or unverified.",
+      "rationale": "The request would not run in the approved local execution environment.",
       "requirements_applied": [
         "R1",
         "R2"
@@ -80,22 +80,22 @@
         "E1"
       ],
       "missing_or_conflicting_evidence": [
-        "execution_environment_attestation execution_environment_attestation is missing or unverified for the request environment."
+        "execution_environment_attestation is not verified for the request environment."
       ],
       "assumptions": [
         "The supplied structured fields faithfully represent the underlying request and evidence records."
       ],
       "unresolved_uncertainty": [
-        "The request's execution environment lacks a verified approved-local attestation."
+        "The request's execution environment cannot be established as the required environment."
       ]
     },
     {
       "request_id": "R5",
       "decision": "Escalate",
-      "rationale": "The pre-execution approval record is invalid, stale, or conflicting, so the request cannot be decided automatically.",
+      "rationale": "The pre-execution approval records conflict.",
       "requirements_applied": [
-        "R1",
-        "R2"
+        "R2",
+        "R3"
       ],
       "evidence_used": [
         "E2",
@@ -103,13 +103,13 @@
         "E4"
       ],
       "missing_or_conflicting_evidence": [
-        "E4 approval_record has invalid, stale, or conflicting approval state."
+        "approval_record evidence has conflicting state."
       ],
       "assumptions": [
         "The supplied structured fields faithfully represent the underlying request and evidence records."
       ],
       "unresolved_uncertainty": [
-        "The valid pre-execution approval state cannot be established from conflicting or stale evidence."
+        "The approval_record evidence is conflicting and cannot be resolved."
       ]
     }
   ]

@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "policy_name": "verifoxx-policy",
+  "policy_version": "1.0.0",
+  "results": [
+    {
+      "request_id": "EDGE_EXTERNAL_ABOVE",
+      "decision": "Revise",
+      "rationale": "Above-standard usage is reserved for trusted internal teams; the request must be lowered to the standard usage limit.",
+      "requirements_applied": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "evidence_used": [
+        "E1",
+        "E2",
+        "E3"
+      ],
+      "missing_or_conflicting_evidence": [],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": [],
+      "remediation": [
+        {
+          "action": "set_field",
+          "field": "usage_limit",
+          "value": "standard"
+        }
+      ]
+    },
+    {
+      "request_id": "EDGE_INDIVIDUAL_OUTPUT",
+      "decision": "Reject",
+      "rationale": "The requested action or output would disclose individual-level information, which external partners may not receive.",
+      "requirements_applied": [
+        "R1",
+        "R2"
+      ],
+      "evidence_used": [
+        "E1",
+        "E2"
+      ],
+      "missing_or_conflicting_evidence": [],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": []
+    },
+    {
+      "request_id": "EDGE_MISSING_APPROVALS",
+      "decision": "Escalate",
+      "rationale": "A valid current pre-execution approval record from the designated reviewer is missing.",
+      "requirements_applied": [
+        "R2",
+        "R3"
+      ],
+      "evidence_used": [
+        "E2"
+      ],
+      "missing_or_conflicting_evidence": [
+        "Required approval_record evidence is missing."
+      ],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": [
+        "Whether the required approval_record evidence exists remains unresolved."
+      ]
+    },
+    {
+      "request_id": "EDGE_WRONG_ADJUSTMENT",
+      "decision": "Revise",
+      "rationale": "The usage-limit adjustment approval is invalid or does not match the required qualifiers.",
+      "requirements_applied": [
+        "R2",
+        "R3"
+      ],
+      "evidence_used": [
+        "E1",
+        "E2",
+        "E_BAD_ADJUSTMENT"
+      ],
+      "missing_or_conflicting_evidence": [
+        "usage_limit_adjustment evidence is invalid or does not match required qualifiers."
+      ],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": [
+        "The usage_limit_adjustment evidence does not satisfy the required qualifiers."
+      ],
+      "remediation": [
+        {
+          "action": "add_evidence",
+          "evidence_kind": "usage_limit_adjustment",
+          "description": "Provide a valid usage_limit_adjustment approval record scoped for trusted_internal_only."
+        }
+      ]
+    },
+    {
+      "request_id": "EDGE_MISSING_REFERENCE",
+      "decision": "Escalate",
+      "rationale": "Referenced evidence ID E_GHOST is missing from the evidence pack.",
+      "requirements_applied": [
+        "R1",
+        "R2"
+      ],
+      "evidence_used": [
+        "E1",
+        "E2"
+      ],
+      "missing_or_conflicting_evidence": [
+        "Referenced evidence ID E_GHOST is missing from the evidence pack."
+      ],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": [
+        "The referenced evidence record cannot be located, so its state remains unresolved."
+      ]
+    },
+    {
+      "request_id": "EDGE_UNKNOWN_ACTION",
+      "decision": "Escalate",
+      "rationale": "The request contains unknown or missing semantic values: action \"mystery_processing\" is unknown.",
+      "requirements_applied": [
+        "R1",
+        "R2"
+      ],
+      "evidence_used": [
+        "E1",
+        "E2"
+      ],
+      "missing_or_conflicting_evidence": [],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": [
+        "The request's semantic values cannot be validated against the policy."
+      ]
+    },
+    {
+      "request_id": "EDGE_IRRELEVANT_CONFLICT",
+      "decision": "Approve",
+      "rationale": "The request satisfies all applicable requirements and supporting evidence.",
+      "requirements_applied": [
+        "R1",
+        "R2"
+      ],
+      "evidence_used": [
+        "E1",
+        "E2"
+      ],
+      "missing_or_conflicting_evidence": [],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": []
+    },
+    {
+      "request_id": "EDGE_MIXED_DISCLOSURE",
+      "decision": "Reject",
+      "rationale": "The requested action or output would disclose individual-level information, which external partners may not receive.",
+      "requirements_applied": [
+        "R1",
+        "R2"
+      ],
+      "evidence_used": [
+        "E1",
+        "E2"
+      ],
+      "missing_or_conflicting_evidence": [],
+      "assumptions": [
+        "The supplied structured fields faithfully represent the underlying request and evidence records."
+      ],
+      "unresolved_uncertainty": []
+    }
+  ]
+}

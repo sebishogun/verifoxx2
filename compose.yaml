@@ -1,0 +1,14 @@
+name: verifoxx
+
+services:
+  verifoxx:
+    image: "${IMAGE_NAME:-verifoxx:local}"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

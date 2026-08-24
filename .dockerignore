@@ -1,0 +1,28 @@
+# VCS metadata
+.git/
+
+# Repository-local toolchains and build artifacts
+bin/
+.tools/
+
+# Local workflow scripts, docs, and planning files (not needed to test/build)
+scripts/
+docs/
+
+# Go build/test artifacts
+*.exe
+*.test
+*.out
+
+# Editor and OS artifacts
+*~
+*.swp
+*.swo
+.DS_Store
+
+# Builder conformance tests compare against the committed golden outputs;
+# keep results/requests.json and everything under fixtures/ (both the
+# supplied pack and fixtures/demo/ with expected.json) while excluding
+# anything else under results/.
+results/*
+!results/requests.json

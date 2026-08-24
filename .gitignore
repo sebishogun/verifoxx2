@@ -2,3 +2,6 @@ bin/
 *.exe
 *.test
 *.out
+
+# Repository-local Go toolchain installed by scripts/install-go.sh
+.tools/

@@ -1,0 +1,40 @@
+[
+  {
+    "id": "E1",
+    "type": "approval_record",
+    "status": "valid",
+    "timing": "before_execution",
+    "reviewer": "designated_reviewer",
+    "timestamp_state": "current"
+  },
+  {
+    "id": "E2",
+    "type": "execution_environment_attestation",
+    "subject": "local_approved_env",
+    "status": "verified",
+    "attestation_state": "valid"
+  },
+  {
+    "id": "E3",
+    "type": "usage_limit_adjustment",
+    "status": "approved",
+    "scope": "trusted_internal_only",
+    "adjustment_type": "above_standard_limit",
+    "reviewer": "designated_reviewer",
+    "timestamp_state": "current"
+  },
+  {
+    "id": "E_BAD_ADJUSTMENT",
+    "type": "usage_limit_adjustment",
+    "status": "approved",
+    "scope": "trusted_internal_only",
+    "adjustment_type": "below_standard_limit",
+    "reviewer": "designated_reviewer",
+    "timestamp_state": "current"
+  },
+  {
+    "id": "E_IRRELEVANT_CONFLICT",
+    "type": "usage_limit_adjustment",
+    "status": "conflicting"
+  }
+]

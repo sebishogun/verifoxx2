@@ -1,0 +1,90 @@
+[
+  {
+    "id": "EDGE_EXTERNAL_ABOVE",
+    "requester": "external_partner",
+    "trust_level": "external",
+    "action": "aggregate_analysis",
+    "output_kind": "aggregate_counts",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "above_standard_limit",
+    "evidence_ids": ["E1", "E2", "E3"]
+  },
+  {
+    "id": "EDGE_INDIVIDUAL_OUTPUT",
+    "requester": "external_partner",
+    "trust_level": "external",
+    "action": "aggregate_analysis",
+    "output_kind": "individual_records",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "standard",
+    "evidence_ids": ["E1", "E2"]
+  },
+  {
+    "id": "EDGE_MISSING_APPROVALS",
+    "requester": "internal_team",
+    "trust_level": "trusted_internal",
+    "action": "aggregate_analysis",
+    "output_kind": "aggregate_counts",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "above_standard_limit",
+    "evidence_ids": ["E2"]
+  },
+  {
+    "id": "EDGE_WRONG_ADJUSTMENT",
+    "requester": "internal_team",
+    "trust_level": "trusted_internal",
+    "action": "aggregate_analysis",
+    "output_kind": "aggregate_counts",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "above_standard_limit",
+    "evidence_ids": ["E1", "E2", "E_BAD_ADJUSTMENT"]
+  },
+  {
+    "id": "EDGE_MISSING_REFERENCE",
+    "requester": "external_partner",
+    "trust_level": "external",
+    "action": "aggregate_analysis",
+    "output_kind": "aggregate_counts",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "standard",
+    "evidence_ids": ["E1", "E2", "E_GHOST"]
+  },
+  {
+    "id": "EDGE_UNKNOWN_ACTION",
+    "requester": "external_partner",
+    "trust_level": "external",
+    "action": "mystery_processing",
+    "output_kind": "aggregate_counts",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "standard",
+    "evidence_ids": ["E1", "E2"]
+  },
+  {
+    "id": "EDGE_IRRELEVANT_CONFLICT",
+    "requester": "external_partner",
+    "trust_level": "external",
+    "action": "aggregate_analysis",
+    "output_kind": "aggregate_counts",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "standard",
+    "evidence_ids": ["E1", "E2", "E_IRRELEVANT_CONFLICT"]
+  },
+  {
+    "id": "EDGE_MIXED_DISCLOSURE",
+    "requester": "external_partner",
+    "trust_level": "external",
+    "action": "mystery_processing",
+    "output_kind": "individual_records",
+    "dataset": "protected_dataset",
+    "environment": "local_approved_env",
+    "usage_limit": "standard",
+    "evidence_ids": ["E1", "E2"]
+  }
+]
