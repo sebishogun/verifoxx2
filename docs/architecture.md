@@ -9,6 +9,59 @@ session. The runtime is scalar and single-process. SIMD, parallel scheduling,
 persistence, network services, and interactive debugging are extension points
 rather than implemented features.
 
+## Performance Tenets
+
+Verifoxx is performance-focused at the level that matters first: data layout,
+lifetime, and repeated work. The design is causally ordered:
+
+```text
+parallel arrays + grouped lifetimes + pre-sized caller storage
+  -> contiguous, uniformly typed runtime data
+  -> bulk scalar kernels with no per-row allocation
+  -> stable future boundaries for SIMD and row sharding
+```
+
+| Tenet | How this repository applies it |
+| --- | --- |
+| Design the data before the control flow | `program.Program`, `eval.Batch`, `eval.Context`, and `result.Batch` use parallel arrays, bitplanes, and CSR ranges instead of per-row object graphs |
+| Compile and validate once | Policy strings and expression shapes become typed IDs, postorder instructions, and immutable tables before evaluation |
+| Allocate outside the per-row path | Builders, contexts, numeric results, materialized outputs, and frame buffers are reusable; correctly pre-sized warm evaluation performs zero allocations |
+| Work in bulk | Field-major columns and instruction-major bitplanes let scalar loops process contiguous values or 64-row words |
+| Do not repeat boundary work | Input strings are resolved once during batch construction; text reconstruction happens only after numeric evaluation |
+| Group values by lifetime | One immutable `Engine` owns policy data while each `Session` owns all mutable storage for one sequential worker |
+| Parallelize only at a natural boundary | Independent sessions may share an engine; the current CLI remains sequential and does not claim parallel speedup |
+| Keep ownership visible | No `sync.Pool` is used; the caller or session that reuses a slice also owns its overwrite rules |
+| Measure unlike lifetimes separately | Compilation, cold destination growth, first frame, steady frame, warm evaluation, and materialization have separate benchmarks |
+
+The current kernels are scalar. The layouts permit later SIMD dispatch and row
+sharding, but neither is implemented here. JSON decoding and human-readable
+materialization are boundary work and may allocate; the zero-allocation
+contract applies to correctly sized warm `EvaluateInto` calls.
+
+## Core Runtime Types
+
+These types carry data through the production path. Source objects and output
+objects stay outside the numeric evaluator.
+
+| Type | Representation | Owner and lifetime | Responsibility |
+| --- | --- | --- | --- |
+| [`ast.Policy`](../internal/ast/policy.go) | Ordered requirements, expression nodes, resolutions, explanations, remediations | Loader/caller; cold and discardable after compilation | Human-readable source intermediate representation |
+| [`program.Program`](../internal/program/program.go) | Immutable parallel arrays, typed IDs, CSR ranges, resolution tables, one interned text slab | `engine.Engine`; long-lived and shareable | Complete validated numeric policy used by evaluation and materialization |
+| [`input.Request` and `input.Evidence`](../internal/input/types.go) | Strict JSON-facing structs with source strings and IDs | Adapter/session; retained through materialization | Preserve boundary data and exact source identifiers |
+| [`eval.Builder`](../internal/eval/builder.go) | Program pointer, limits, reusable validation and lookup maps | One session; reused between packs | Validate source IDs and resolve strings into a numeric batch |
+| [`eval.Batch`](../internal/eval/batch.go) | Field-major request columns, evidence qualifier columns, bitplanes, CSR evidence edges | One session; rebuilt in place for each pack | Numeric request and evidence input to the evaluator |
+| [`eval.Context`](../internal/eval/context.go) | Positive, negative, and reason bitplanes indexed by instruction and row word | One session/worker; resized before evaluation and never shared | Reusable instruction-evaluation scratch |
+| [`eval.Evaluator`](../internal/eval/executor.go) | Read-only pointer to one immutable program | `engine.Engine`; shareable | Execute all instructions and resolve the highest-ranked deterministic driver |
+| [`result.Batch`](../internal/result/batch.go) | Parallel numeric result columns plus CSR provenance and remediation IDs | One session/worker; caller-sized and reused | Receive decisions without allocating or formatting in the evaluator |
+| [`jsonio.OutputPack`](../internal/adapters/jsonio/output.go) | JSON-facing result structs and reusable nested slices | One session or one-shot output boundary | Reconstruct source IDs, explanations, uncertainty, and remediation text |
+| [`engine.Engine`](../internal/engine/engine.go) | Validated `Program`, `Evaluator`, and limits | Application; long-lived and immutable | Publish one compiled policy safely to one or more sessions |
+| [`engine.Session`](../internal/engine/engine.go) | Builder, batch, context, numeric results, and output pack | One sequential worker; not shared concurrently | Group mutable same-lifetime storage and evaluate repeated packs |
+| [`framed.FrameReader`, `FrameWriter`, and `JSONCodec`](../internal/adapters/framed/) | Reusable length header, payload/input/output buffers, and response envelopes | Framed CLI loop; sequential | Enforce transport bounds and keep repeated protocol storage private |
+
+The core ownership split is `Engine` for immutable shared data and `Session`
+for mutable private data. A returned output pack belongs to its session and is
+overwritten by that session's next evaluation.
+
 ## Data Flow
 
 ```text
