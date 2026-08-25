@@ -43,10 +43,29 @@ parsing, SIMD, or parallel scheduling.
 
 ## Quickstart
 
-Run the complete local check and golden-file demonstration:
+Clone the repository and enter it:
 
 ```bash
+git clone https://github.com/sebishogun/verifoxx2.git
+cd verifoxx2
+```
+
+A Git clone preserves executable modes. If the repository came from a ZIP file
+or a filesystem that removed them, restore every shell script with:
+
+```bash
+chmod +x scripts/*.sh
+```
+
+### Preferred: Make
+
+Check the machine, run the complete verification, then run the bounded
+performance suite:
+
+```bash
+./scripts/doctor.sh
 make demo
+make bench
 ```
 
 `make demo` runs formatting checks, fresh tests, installer and menu
@@ -55,14 +74,55 @@ packs in a temporary directory and compares both outputs byte-for-byte with
 [`results/requests.json`](results/requests.json) and
 [`fixtures/demo/expected.json`](fixtures/demo/expected.json).
 
-To build and regenerate the tracked supplied-pack output:
+`make bench` reports three single-threaded samples with `ns/op`, `B/op`, and
+`allocs/op` for the complete one-shot CLI, steady framed processing, reusable
+session, five-row warm evaluator, and 1,024-row warm evaluator. Use `make help`
+to list every command or `make menu` to choose one interactively.
+
+To build and regenerate the tracked supplied-pack output, use `make all`.
+
+### Alternative: Docker Or Compose
+
+These commands require Bash and Docker, but not host Go or Make. Each script
+builds once, evaluates both fixture packs, and compares the generated JSON with
+the tracked golden files:
 
 ```bash
-make all
+./scripts/docker-demo.sh
+# or, with the Docker Compose plugin:
+./scripts/compose-demo.sh
 ```
 
-If Go is unavailable, use `make docker-demo` or `make compose-demo`. Neither
-requires a host Go installation.
+The equivalent Make wrappers are `make docker-demo` and `make compose-demo`.
+See [Docker And Compose](#docker-and-compose) for raw Docker commands and JSON
+redirection.
+
+### Alternative: Go Directly
+
+This path requires Bash and Go, but not Make. The installer is a no-op when a
+runnable Go already exists; otherwise it installs the pinned toolchain under
+`.tools/go` without `sudo`:
+
+```bash
+./scripts/install-go.sh
+./scripts/gofmt-check.sh
+./scripts/go.sh test -count=1 -timeout 60s ./...
+./scripts/go.sh vet ./...
+mkdir -p bin
+./scripts/go.sh build -o bin/verifoxx ./cmd/verifoxx
+./scripts/demo.sh
+./scripts/bench.sh
+```
+
+To run only the built solution and emit the complete R1-R5 JSON on stdout:
+
+```bash
+./bin/verifoxx \
+  --policy policies/policy.json \
+  --requests fixtures/requests.json \
+  --evidence fixtures/evidence.json \
+  --output -
+```
 
 ## Supplied Decisions
 
@@ -327,6 +387,83 @@ temporary file in the destination directory, set to mode `0644`, and renamed
 over the destination. The rename makes replacement atomic. Because the
 directory is not synced, it does not guarantee durability after a system crash.
 
+### Custom Policy Packs
+
+The five supplied request IDs are fixtures, not branches in the evaluator. A
+reviewer can provide another policy plus another request and evidence pack, and
+the engine will compile that policy and calculate the corresponding results:
+
+```bash
+./bin/verifoxx \
+  --policy path/to/policy.json \
+  --requests path/to/requests.json \
+  --evidence path/to/evidence.json \
+  --output -
+```
+
+The reusable part is intentionally bounded to the exercise domain:
+
+| May vary by policy pack | Fixed by this implementation |
+| --- | --- |
+| Policy name and version | Final outcomes: `Approve`, `Reject`, `Revise`, `Escalate` |
+| Requirement and clause IDs, order, applicability, and descriptions | Operators: `all`, `equal`, `in`, `evidence_matches` |
+| State-specific outcome mappings and explanations | Request and evidence field names |
+| Structured `set_field` and `add_evidence` remediations | Allowed non-requester symbols and evidence kinds |
+| Request IDs, evidence IDs, and supported field combinations | Input limits and decision precedence |
+
+The engine does not ingest natural-language requirements or arbitrary schemas.
+Policy authors encode requirements in the documented JSON representation. An
+unsupported field, value, evidence kind, operator, outcome, or remediation is a
+load-time error rather than an implicit decision.
+
+To regression-test a custom pack, write its output and compare it with a
+caller-owned expected file:
+
+```bash
+./bin/verifoxx \
+  --policy path/to/policy.json \
+  --requests path/to/requests.json \
+  --evidence path/to/evidence.json \
+  --output path/to/actual.json
+cmp path/to/actual.json path/to/expected.json
+```
+
+Build the image once, then mount the same custom files read-only:
+
+```bash
+docker build -t verifoxx:local .
+docker run --rm \
+  --mount type=bind,src="$PWD/path/to",dst=/input,readonly \
+  verifoxx:local \
+  --policy /input/policy.json \
+  --requests /input/requests.json \
+  --evidence /input/evidence.json \
+  --output -
+```
+
+The runtime image uses UID/GID 65532. Make custom JSON readable before mounting
+it:
+
+```bash
+chmod -R a+rX path/to
+```
+
+On an SELinux-enforcing host, replace the `--mount` argument with a relabelled
+volume:
+
+```bash
+docker run --rm \
+  -v "$PWD/path/to:/input:ro,Z" \
+  verifoxx:local \
+  --policy /input/policy.json \
+  --requests /input/requests.json \
+  --evidence /input/evidence.json \
+  --output -
+```
+
+Docker's `:Z` option changes the SELinux label on the mounted files. Use a
+disposable input directory when those host labels must remain unchanged.
+
 ### Repeated Framed Packs
 
 For repeated request/evidence packs under one policy, compile once and reuse a
@@ -366,35 +503,80 @@ batch-build, evaluation, materialization, and output failures return exit code
 
 ### Dependencies
 
-- Go 1.27+; the module uses only the standard library.
-- Bash 3.2+ and GNU Make for local workflows.
-- Optional: `fzf`, Docker, and the Docker Compose plugin.
+Choose one execution path:
 
-`make doctor` reports readiness. `make install-go` reuses any runnable Go or,
-when none exists, installs the pinned release under `.tools/go` without
-`sudo`. The installer supports Linux and macOS on amd64 and arm64 and verifies
-the official go.dev checksum before replacing a local toolchain.
+| Path | Required on the host | Entry command |
+| --- | --- | --- |
+| Make, preferred | Bash 3.2+, Make, Go 1.27+ | `make demo` |
+| Docker | Bash 3.2+, Docker daemon | `./scripts/docker-demo.sh` |
+| Compose | Bash 3.2+, Docker daemon and Compose plugin | `./scripts/compose-demo.sh` |
+| Direct Go | Bash 3.2+, Go 1.27+ | `./scripts/demo.sh` after building |
+
+The Go module uses only the standard library. `fzf` is optional; `make menu`
+falls back to a numbered prompt when it is absent.
+
+Run the doctor directly even when Make is unavailable:
+
+```bash
+./scripts/doctor.sh
+```
+
+The doctor performs no installation, network request, or Docker daemon call.
+It reports Bash, Make, Go, installer prerequisites, Docker, Compose, and `fzf`.
+
+#### Installing Make
+
+The repository does not run `sudo` or a host package manager. Use the command
+for the reviewer machine, then rerun `./scripts/doctor.sh`:
+
+| Platform | Command |
+| --- | --- |
+| macOS | `xcode-select --install` |
+| Debian or Ubuntu | `sudo apt-get update && sudo apt-get install -y make` |
+| Fedora or RHEL | `sudo dnf install make` |
+| Arch Linux | `sudo pacman -S make` |
+| openSUSE | `sudo zypper install make` |
+| Alpine Linux, as root | `apk add bash make` |
+
+On macOS, `xcode-select --install` installs Apple's lightweight Command Line
+Tools package, not the full Xcode application. It provides Git and Make. Skip
+it when `make --version` already succeeds. On Windows, use WSL2 for the Bash
+and Make workflows, or Docker Desktop for the container workflow.
+
+#### Installing Go
+
+`make install-go` and its direct equivalent `./scripts/install-go.sh` reuse any
+runnable Go. If none exists, they download Go 1.27.0 for Linux or macOS on
+amd64 or arm64, verify the official go.dev checksum, and install it under
+`.tools/go`. They never use `sudo` or write outside the repository.
 
 ### Make Targets
 
 | Target | Purpose |
 | --- | --- |
-| `all` | Build, then regenerate `results/requests.json` |
-| `build` | Compile `bin/verifoxx` |
-| `eval` | Evaluate the supplied pack into the tracked result |
-| `check` | Run formatting, fresh tests, workflow regressions, vet, and build |
-| `demo` | Check and compare supplied plus edge outputs with their goldens |
-| `demo-edge` | Compare only the edge pack with its golden |
+| `menu` | Open the generated `fzf` target picker or numbered fallback |
+| `targets` | List the menu's targets non-interactively |
+| `help` | Show every Make target and workflow convention |
 | `setup` | Check prerequisites and download modules |
 | `doctor` | Report required and optional dependencies |
 | `install-go` | Reuse Go or install the pinned toolchain under `.tools/go` |
 | `shell` | Install the cross-shell global `mm` shortcut |
-| `menu` | Open the generated `fzf` target picker or numbered fallback |
-| `targets` | List the menu's targets non-interactively |
-| `docker-demo` | Build once and verify both packs in Docker |
-| `compose-demo` | Build once and verify both packs through Compose |
+| `all` | Build, then regenerate `results/requests.json` |
+| `build` | Compile `bin/verifoxx` |
+| `eval` | Evaluate the supplied pack into the tracked result |
+| `fmt-check` | Verify formatting under `cmd/` and `internal/` |
+| `test` | Run fresh Go tests and workflow regressions |
+| `vet` | Run `go vet` across the module |
+| `check` | Run formatting, fresh tests, workflow regressions, vet, and build |
+| `bench` | Run representative lifecycle benchmarks with allocation metrics |
+| `demo` | Check and compare supplied plus edge outputs with their goldens |
+| `demo-edge` | Compare only the edge pack with its golden |
+| `docker-build` | Build the multi-stage Docker image |
 | `docker-eval` | Emit supplied-pack JSON from Docker on stdout |
+| `docker-demo` | Build once and verify both packs in Docker |
+| `compose-build` | Build the image through Compose |
 | `compose-eval` | Emit supplied-pack JSON from Compose on stdout |
+| `compose-demo` | Build once and verify both packs through Compose |
 | `clean` | Remove `bin/` while preserving tracked results |
 
 Every public Make target has an inline `##` description. `make help`,
@@ -446,7 +628,8 @@ Warm evaluation measured `552.6-594.8 ns/op` for one row and
 
 These figures describe local microbenchmarks. Commands, lifecycle stages,
 data-size formulas, and excluded work are documented in
-[`docs/performance.md`](docs/performance.md).
+[`docs/performance.md`](docs/performance.md). Run `make bench` for the bounded
+reviewer suite.
 
 ## Repository Layout
 
@@ -478,7 +661,9 @@ static binary, policy, and fixtures into a non-root scratch image. The Compose
 service is one-shot, network-disabled, read-only, capability-free, and uses
 `no-new-privileges`.
 
-For machine-readable output:
+### With Make
+
+For machine-readable supplied-pack output:
 
 ```bash
 make docker-eval > supplied.json
@@ -491,6 +676,52 @@ For golden verification:
 make docker-demo
 make compose-demo
 ```
+
+### Without Make
+
+The helper scripts perform the same two-pack golden verification and require no
+host Go installation:
+
+```bash
+chmod +x scripts/*.sh
+./scripts/docker-demo.sh
+# or:
+./scripts/compose-demo.sh
+```
+
+### Raw Docker
+
+Build the image, evaluate the supplied pack, and compare its JSON with the
+submitted result:
+
+```bash
+docker build -t verifoxx:local .
+docker run --rm verifoxx:local > supplied.json
+cmp supplied.json results/requests.json
+```
+
+Evaluate the edge pack directly:
+
+```bash
+docker run --rm verifoxx:local \
+  --policy policies/policy.json \
+  --requests fixtures/demo/requests.json \
+  --evidence fixtures/demo/evidence.json \
+  --output - > edge.json
+cmp edge.json fixtures/demo/expected.json
+```
+
+### Raw Compose
+
+```bash
+IMAGE_NAME=verifoxx:local docker compose -f compose.yaml build
+IMAGE_NAME=verifoxx:local docker compose -f compose.yaml \
+  run --rm -T --no-deps verifoxx > supplied.json
+cmp supplied.json results/requests.json
+```
+
+The CLI reserves stdout for machine-readable JSON and writes its human decision
+table to stderr, so redirecting stdout does not mix status text into the result.
 
 ## AI Tool Use
 

@@ -19,10 +19,24 @@ maximum observed sample rather than a throughput projection.
 
 ## Reproduce
 
-The final command measured every stage sequentially by package:
+For a bounded reviewer run covering the complete one-shot CLI, steady framed
+processing, reusable session, and warm evaluation at five and 1,024 rows:
 
 ```bash
-timeout 120s env GOMAXPROCS=1 ./scripts/go.sh test \
+make bench
+# Without Make:
+./scripts/bench.sh
+```
+
+This command runs three single-threaded 500 ms samples and reports `ns/op`,
+`B/op`, and `allocs/op`. The warm evaluator rows should retain their measured
+zero-allocation contract. Timing varies with the host CPU and power state.
+
+The final six-sample measurement command covered every stage sequentially by
+package:
+
+```bash
+env GOMAXPROCS=1 ./scripts/go.sh test \
   -p 1 \
   -run '^$' \
   -bench 'Benchmark(Evaluate|Compile|BuildBatch|Materialize|Session|FirstFrame|SteadyFrame)' \
@@ -33,7 +47,7 @@ timeout 120s env GOMAXPROCS=1 ./scripts/go.sh test \
 The allocation regression is independent of timing:
 
 ```bash
-timeout 60s ./scripts/go.sh test -count=1 -timeout 60s \
+./scripts/go.sh test -count=1 -timeout 60s \
   ./cmd/verifoxx ./internal/eval ./internal/program \
   -run 'Test.*Allocation' -v
 ```

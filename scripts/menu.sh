@@ -48,7 +48,7 @@ requirements_for() {
     case "$1" in
         docker-*) echo docker ;;
         compose-*) echo compose ;;
-        all|build|eval|fmt-check|test|vet|check|demo|demo-edge|setup|shell) echo go ;;
+        all|build|eval|fmt-check|test|vet|check|bench|demo|demo-edge|setup|shell) echo go ;;
     esac
 }
 

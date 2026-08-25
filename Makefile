@@ -1,4 +1,4 @@
-.PHONY: menu targets help setup doctor install-go shell all build eval fmt-check test vet check \
+.PHONY: menu targets help setup doctor install-go shell all build eval fmt-check test vet check bench \
 	demo demo-edge docker-build docker-eval docker-demo compose-build compose-eval \
 	compose-demo clean
 
@@ -53,6 +53,7 @@ fmt-check: ## Verify gofmt formatting under cmd/ and internal/
 
 test: ## Run fresh Go tests and workflow regressions
 	$(GO) test -count=1 -timeout 60s ./...
+	./scripts/doctor-selftest.sh
 	./scripts/install-go-idempotence-test.sh
 	./scripts/install-go-rollback-test.sh
 	./scripts/menu-selftest.sh
@@ -61,6 +62,10 @@ vet: ## Run go vet across the module
 	$(GO) vet ./...
 
 check: fmt-check test vet build ## Run format checks, tests, vet, and build
+
+# Performance
+bench: ## Run representative lifecycle benchmarks with allocation metrics
+	./scripts/bench.sh
 
 # Reviewer demos
 demo: check ## Verify supplied and edge packs against tracked goldens

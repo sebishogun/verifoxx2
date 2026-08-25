@@ -39,7 +39,8 @@ esac
 
 if [[ ! -x "$binary" ]]; then
     printf 'demo: error: %s is missing or not executable\n' "$binary" >&2
-    printf 'Build it first with: make build\n' >&2
+    printf 'Build it with: make build\n' >&2
+    printf 'Without Make: mkdir -p bin && ./scripts/go.sh build -o bin/verifoxx ./cmd/verifoxx\n' >&2
     exit 1
 fi
 

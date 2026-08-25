@@ -32,6 +32,32 @@ go_at_least() { # version major minor
     return 1
 }
 
+make_install_hint() {
+    case "$(uname -s 2>/dev/null || true)" in
+        Darwin)
+            printf 'run: xcode-select --install'
+            ;;
+        Linux)
+            if command -v apt-get >/dev/null 2>&1; then
+                printf 'run: sudo apt-get install make'
+            elif command -v dnf >/dev/null 2>&1; then
+                printf 'run: sudo dnf install make'
+            elif command -v pacman >/dev/null 2>&1; then
+                printf 'run: sudo pacman -S make'
+            elif command -v zypper >/dev/null 2>&1; then
+                printf 'run: sudo zypper install make'
+            elif command -v apk >/dev/null 2>&1; then
+                printf 'run as root: apk add bash make'
+            else
+                printf 'install GNU Make with your system package manager'
+            fi
+            ;;
+        *)
+            printf 'install GNU Make with your system package manager'
+            ;;
+    esac
+}
+
 printf 'Verifoxx local workflow doctor\n'
 printf '==============================\n'
 
@@ -44,7 +70,8 @@ if command -v make >/dev/null 2>&1; then
     make_ver="$(make --version 2>/dev/null | sed -n '1p')"
     report make "${make_ver:-present}" OK ""
 else
-    report make "-" MISSING "install GNU make"
+    make_hint="$(make_install_hint)"
+    report make "-" MISSING "$make_hint"
     required_ok=0
 fi
 
@@ -54,7 +81,7 @@ if go_ver_out="$("$root/scripts/go.sh" version 2>/dev/null)"; then
         goroot="$("$root/scripts/go.sh" env GOROOT 2>/dev/null)"
         report go "$go_ver" OK "via ${goroot:-?}/bin/go"
     else
-            report go "${go_ver:-unknown}" OUTDATED "need Go 1.27+; upgrade the existing installation"
+        report go "${go_ver:-unknown}" OUTDATED "need Go 1.27+; upgrade the existing installation"
         required_ok=0
     fi
 else
@@ -114,6 +141,10 @@ if (( required_ok )); then
     printf 'Result: all required local workflow dependencies present\n'
 else
     printf 'Result: required dependencies missing or outdated\n'
-    printf 'Remedy: if Go is absent, scripts/install-go.sh installs it locally; upgrade an existing outdated Go. Install GNU make for make targets.\n'
+    printf 'Go remedy: scripts/install-go.sh installs Go locally when it is absent; upgrade an existing outdated Go.\n'
+    if ! command -v make >/dev/null 2>&1; then
+        printf 'Make remedy: %s\n' "${make_hint:-$(make_install_hint)}"
+    fi
+    printf 'No-Make container path: scripts/docker-demo.sh or scripts/compose-demo.sh (host Go is not required).\n'
     exit 1
 fi
