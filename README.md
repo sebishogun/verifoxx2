@@ -733,5 +733,5 @@ engine and do not call an AI model.
 ## Evolution
 
 This repository contains the compiled scalar engine built for the exercise.
-The larger [Verifoxx](https://github.com/sebishogun/Verifoxx) project adds SIMD,
+The larger [NornRune](https://github.com/sebishogun/nornrune) project adds SIMD,
 scheduling, persistence, services, and debugging.
